@@ -1,0 +1,92 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "MotorStudio (MinGW 32-bit Debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/MotorStudio/build/mingw32-debug/src/app/MotorStudio.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/MotorStudio",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/bin;${env:PATH}"
+        }
+      ],
+      "externalConsole": true,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/MinGW/bin/gdb.exe",
+      "setupCommands": [
+        {
+          "description": "为 gdb 启用整齐打印",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "将反汇编风格设置为 Intel",
+          "text": "-gdb-set disassembly-flavor intel",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "CMake: 构建 (MinGW 32-bit Debug)"
+    },
+    {
+      "name": "MotorStudio (MinGW 64-bit Debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/MotorStudio/build/mingw64-debug/src/app/MotorStudio.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/MotorStudio",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/bin;${env:PATH}"
+        }
+      ],
+      "externalConsole": true,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/MinGW/bin/gdb.exe",
+      "setupCommands": [
+        {
+          "description": "为 gdb 启用整齐打印",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "将反汇编风格设置为 Intel",
+          "text": "-gdb-set disassembly-flavor intel",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "CMake: 构建 (MinGW 64-bit Debug)"
+    },
+    {
+      "name": "untitled (Qt5 MinGW 32-bit)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/untitled/build/mingw32-debug/untitled.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/untitled",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/bin;${env:PATH}"
+        }
+      ],
+      "externalConsole": true,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/MinGW/bin/gdb.exe",
+      "setupCommands": [
+        {
+          "description": "为 gdb 启用整齐打印",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

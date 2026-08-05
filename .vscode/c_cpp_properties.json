@@ -1,0 +1,45 @@
+{
+  "configurations": [
+    {
+      "name": "MinGW 32-bit",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtCore",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtWidgets",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtGui",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtSerialPort",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtSerialBus",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtNetwork",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/include/QtQml"
+      ],
+      "defines": [],
+      "compilerPath": "C:/MinGW/bin/g++.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "windows-gcc-x86",
+      "configurationProvider": "ms-vscode.cmake-tools"
+    },
+    {
+      "name": "MinGW 64-bit",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtCore",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtWidgets",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtGui",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtSerialPort",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtSerialBus",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtNetwork",
+        "D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/include/QtQml"
+      ],
+      "defines": [],
+      "compilerPath": "C:/MinGW/bin/g++.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "windows-gcc-x64",
+      "configurationProvider": "ms-vscode.cmake-tools"
+    }
+  ],
+  "version": 4
+}

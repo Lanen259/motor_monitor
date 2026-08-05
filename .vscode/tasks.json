@@ -1,0 +1,114 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: 配置 (MinGW 32-bit Debug)",
+      "type": "shell",
+      "command": "D:/Program_Files/cmake/cmake-4.4.2-windows-x86_64/bin/cmake.exe",
+      "args": [
+        "-S", "${workspaceFolder}/MotorStudio",
+        "-B", "${workspaceFolder}/MotorStudio/build/mingw32-debug",
+        "-G", "MinGW Makefiles",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_C_COMPILER=C:/MinGW/bin/gcc.exe",
+        "-DCMAKE_CXX_COMPILER=C:/MinGW/bin/g++.exe",
+        "-DCMAKE_MAKE_PROGRAM=C:/MinGW/bin/mingw32-make.exe",
+        "-DCMAKE_PREFIX_PATH=D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/bin;${env:PATH}"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: 构建 (MinGW 32-bit Debug)",
+      "type": "shell",
+      "command": "D:/Program_Files/cmake/cmake-4.4.2-windows-x86_64/bin/cmake.exe",
+      "args": [
+        "--build", "${workspaceFolder}/MotorStudio/build/mingw32-debug",
+        "--config", "Debug",
+        "-j", "4"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/bin;${env:PATH}"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "dependsOn": [
+        "CMake: 配置 (MinGW 32-bit Debug)"
+      ]
+    },
+    {
+      "label": "CMake: 配置 (MinGW 64-bit Debug)",
+      "type": "shell",
+      "command": "D:/Program_Files/cmake/cmake-4.4.2-windows-x86_64/bin/cmake.exe",
+      "args": [
+        "-S", "${workspaceFolder}/MotorStudio",
+        "-B", "${workspaceFolder}/MotorStudio/build/mingw64-debug",
+        "-G", "MinGW Makefiles",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_C_COMPILER=C:/MinGW/bin/gcc.exe",
+        "-DCMAKE_CXX_COMPILER=C:/MinGW/bin/g++.exe",
+        "-DCMAKE_MAKE_PROGRAM=C:/MinGW/bin/mingw32-make.exe",
+        "-DCMAKE_PREFIX_PATH=D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/bin;${env:PATH}"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: 构建 (MinGW 64-bit Debug)",
+      "type": "shell",
+      "command": "D:/Program_Files/cmake/cmake-4.4.2-windows-x86_64/bin/cmake.exe",
+      "args": [
+        "--build", "${workspaceFolder}/MotorStudio/build/mingw64-debug",
+        "--config", "Debug",
+        "-j", "4"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_64/bin;${env:PATH}"
+        }
+      },
+      "group": "build",
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "CMake: 清理构建",
+      "type": "shell",
+      "command": "D:/Program_Files/cmake/cmake-4.4.2-windows-x86_64/bin/cmake.exe",
+      "args": [
+        "--build", "${workspaceFolder}/MotorStudio/build/mingw32-debug",
+        "--target", "clean"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/bin;${env:PATH}"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

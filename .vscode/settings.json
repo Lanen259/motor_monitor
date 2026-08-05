@@ -1,0 +1,35 @@
+{
+  "cmake.configureOnOpen": true,
+  "cmake.sourceDirectory": "${workspaceFolder}/MotorStudio",
+  "cmake.buildDirectory": "${workspaceFolder}/MotorStudio/build/${buildType}",
+  "cmake.generator": "MinGW Makefiles",
+  "cmake.cmakePath": "D:/Program_Files/cmake/cmake-4.4.2-windows-x86_64/bin/cmake.exe",
+  "cmake.environment": {
+    "PATH": "C:/MinGW/bin;D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32/bin;${env:PATH}"
+  },
+  "cmake.configureArgs": [
+    "-DCMAKE_C_COMPILER=C:/MinGW/bin/gcc.exe",
+    "-DCMAKE_CXX_COMPILER=C:/MinGW/bin/g++.exe",
+    "-DCMAKE_MAKE_PROGRAM=C:/MinGW/bin/mingw32-make.exe",
+    "-DCMAKE_PREFIX_PATH=D:/Program_Files/QT5.14/APP/5.14.2/mingw73_32"
+  ],
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.compilerPath": "C:/MinGW/bin/g++.exe",
+  "C_Cpp.default.cppStandard": "c++20",
+  "C_Cpp.default.intelliSenseMode": "windows-gcc-x86",
+  "files.associations": {
+    "*.ui": "xml",
+    "*.qrc": "xml",
+    "*.pro": "shellscript",
+    "*.pri": "shellscript"
+  },
+  "editor.formatOnSave": false,
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+  "[cmake]": {
+    "editor.defaultFormatter": "twxs.cmake"
+  }
+}
