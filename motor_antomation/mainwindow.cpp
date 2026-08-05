@@ -1,5 +1,11 @@
 #include "mainwindow.h"
 #include "communication/transport/SerialTransport.h"
+#include "communication/protocol/VofaParser.h"
+#include "databus/ChannelManager.h"
+#include "ui/CurveWidget.h"
+#include "ui/DashboardWidget.h"
+#include "ui/FaultWidget.h"
+#include "parameter/ParameterManager.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -20,11 +26,23 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QCloseEvent>
+#include <QElapsedTimer>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_tabWidget(nullptr)
     , m_serialTransport(new MotorStudio::SerialTransport(this))
+    , m_vofaParser(new MotorStudio::VofaParser(this))
+    , m_channelManager(new MotorStudio::ChannelManager(this))
+    , m_paramManager(new MotorStudio::ParameterManager(this))
+    , m_curveWidget(nullptr)
+    , m_dashboardWidget(nullptr)
+    , m_faultWidget(nullptr)
+    , m_paramWidget(nullptr)
 {
     setWindowTitle("Motor Automation");
     resize(1200, 800);
@@ -35,6 +53,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupStatusBar();
     setupCentralWidget();
     setupConnections();
+    setupDataPipeline();
+    createDefaultPages();
 
     // 串口传输信号
     connect(m_serialTransport, &MotorStudio::SerialTransport::connected, this, [this]() {
@@ -303,4 +323,171 @@ void MainWindow::refreshSerialPorts()
     }
 
     m_portCombo->blockSignals(false);
+}
+
+// ============================================================
+// 数据管道：SerialTransport → VofaParser → ChannelManager → UI
+// ============================================================
+
+void MainWindow::setupDataPipeline()
+{
+    // 串口原始数据 → 协议解析
+    connect(m_serialTransport, &MotorStudio::SerialTransport::dataReceived,
+            m_vofaParser, &MotorStudio::VofaParser::feed);
+
+    // 协议解析 → 通道管理器
+    connect(m_vofaParser, &MotorStudio::VofaParser::frameParsed,
+            this, [this](const QVector<float>& values) {
+        m_channelManager->pushFrame(values);
+    });
+
+    // 通道管理器 → 曲线控件
+    connect(m_channelManager, &MotorStudio::ChannelManager::framePushed,
+            this, [this](const QVector<float>& values) {
+        if (m_curveWidget) {
+            m_curveWidget->pushFrame(values);
+        }
+        if (m_dashboardWidget) {
+            m_dashboardWidget->updateValues(values);
+        }
+        // 更新数据速率
+        static int frameCount = 0;
+        static QElapsedTimer timer;
+        if (!timer.isValid()) timer.start();
+        frameCount++;
+        if (timer.elapsed() >= 1000) {
+            double fps = frameCount * 1000.0 / timer.elapsed();
+            m_dataRate->setText(QString(" 数据: %1 fps ").arg(fps, 0, 'f', 0));
+            frameCount = 0;
+            timer.restart();
+        }
+    });
+}
+
+void MainWindow::createDefaultPages()
+{
+    // 曲线页面
+    m_curveWidget = new MotorStudio::CurveWidget();
+    addPage(tr("实时曲线"), m_curveWidget);
+
+    // 仪表盘页面
+    m_dashboardWidget = new MotorStudio::DashboardWidget();
+    addPage(tr("仪表盘"), m_dashboardWidget);
+
+    // 故障页面
+    m_faultWidget = new MotorStudio::FaultWidget();
+    addPage(tr("故障"), m_faultWidget);
+
+    // 参数页面
+    m_paramWidget = new MotorStudio::ParameterWidget();
+    m_paramWidget->setParameterManager(m_paramManager);
+    addPage(tr("参数"), m_paramWidget);
+}
+
+// ============================================================
+// CSV 导出
+// ============================================================
+
+void MainWindow::onExportCSV()
+{
+    QString path = QFileDialog::getSaveFileName(this, tr("导出CSV"), QString(), tr("CSV (*.csv)"));
+    if (path.isEmpty()) return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        statusBar()->showMessage(tr("无法写入文件"), 5000);
+        return;
+    }
+
+    QTextStream stream(&file);
+
+    // 写表头
+    QStringList names = m_channelManager->channelNames();
+    stream << "Timestamp";
+    for (const auto& name : names) {
+        stream << "," << name;
+    }
+    stream << "\n";
+
+    // 写数据
+    int maxCount = 0;
+    for (int i = 0; i < m_channelManager->channelCount(); ++i) {
+        maxCount = std::max(maxCount, m_channelManager->channel(i)->count());
+    }
+
+    for (int row = 0; row < maxCount; ++row) {
+        uint64_t ts = 0;
+        for (int col = 0; col < m_channelManager->channelCount(); ++col) {
+            auto data = m_channelManager->channelData(col, row, 1);
+            if (!data.isEmpty()) {
+                ts = data[0].timestampUs;
+                break;
+            }
+        }
+        stream << ts;
+        for (int col = 0; col < m_channelManager->channelCount(); ++col) {
+            auto data = m_channelManager->channelData(col, row, 1);
+            if (!data.isEmpty()) {
+                stream << "," << data[0].value;
+            } else {
+                stream << ",";
+            }
+        }
+        stream << "\n";
+    }
+
+    file.close();
+    statusBar()->showMessage(tr("CSV已导出: %1").arg(path), 5000);
+}
+
+// ============================================================
+// 工程文件保存/加载
+// ============================================================
+
+void MainWindow::onSaveProject()
+{
+    QString path = QFileDialog::getSaveFileName(this, tr("保存工程"), QString(), tr("JSON (*.json)"));
+    if (path.isEmpty()) return;
+
+    QJsonObject project;
+    project["name"] = "Motor Automation Project";
+    project["version"] = "0.1";
+    project["serialPort"] = m_portCombo->currentText();
+    project["baudRate"] = m_baudCombo->currentText().toInt();
+    project["parameters"] = m_paramManager->toJson();
+    project["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly)) {
+        QJsonDocument doc(project);
+        file.write(doc.toJson(QJsonDocument::Indented));
+        file.close();
+        statusBar()->showMessage(tr("工程已保存: %1").arg(path), 5000);
+    }
+}
+
+void MainWindow::onLoadProject()
+{
+    QString path = QFileDialog::getOpenFileName(this, tr("打开工程"), QString(), tr("JSON (*.json)"));
+    if (path.isEmpty()) return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        statusBar()->showMessage(tr("无法打开文件"), 5000);
+        return;
+    }
+
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+
+    if (!doc.isObject()) return;
+    QJsonObject project = doc.object();
+
+    // 恢复参数
+    if (project.contains("parameters")) {
+        m_paramManager->fromJson(project["parameters"].toObject());
+        m_paramWidget->refresh();
+    }
+
+    statusBar()->showMessage(tr("工程已加载: %1").arg(path), 5000);
 }

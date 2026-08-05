@@ -1,59 +1,89 @@
 #pragma once
+
 #include <QObject>
-#include <memory>
-#include <vector>
-#include <string>
-#include <functional>
-#include <optional>
-#include "ParameterTypes.h"
+#include <QWidget>
+#include <QString>
+#include <QVector>
+#include <QVariant>
+#include <QJsonObject>
+#include <QScrollArea>
 
 namespace MotorStudio {
 
+// ============================================================
+// 单个参数定义
+// ============================================================
+struct ParameterDef {
+    QString name;        // 参数名
+    QString displayName; // 显示名称
+    QString unit;        // 单位
+    QVariant value;      // 当前值
+    QVariant defaultValue;
+    QVariant minValue;
+    QVariant maxValue;
+    QString description;
+    bool readOnly = false;
+};
+
+// ============================================================
 // 参数管理器
+// 支持参数读写、JSON导入导出、信号通知
+// ============================================================
 class ParameterManager : public QObject {
     Q_OBJECT
 public:
-    static ParameterManager& instance();
-    ~ParameterManager();
+    explicit ParameterManager(QObject* parent = nullptr);
 
-    // 加载参数描述文件（JSON）
-    bool loadDescription(const std::string& jsonFilePath);
+    // 参数管理
+    int addParameter(const ParameterDef& param);
+    void removeParameter(int index);
+    void removeAll();
 
-    // 读取参数
-    std::optional<ParamValue> read(uint16_t address);
-    std::vector<ParamValue> readBatch(const std::vector<uint16_t>& addresses);
+    int parameterCount() const { return m_params.size(); }
+    const ParameterDef& parameter(int index) const;
+    ParameterDef& parameterRef(int index);
 
-    // 写入参数
-    bool write(uint16_t address, const ParamValue& value);
-    bool writeBatch(const std::vector<std::pair<uint16_t, ParamValue>>& pairs);
+    // 参数读写
+    bool setValue(int index, const QVariant& value);
+    QVariant value(int index) const;
+    bool setValueByName(const QString& name, const QVariant& value);
+    QVariant valueByName(const QString& name) const;
 
-    // 参数元数据
-    const ParameterMeta* meta(uint16_t address) const;
-    std::vector<const ParameterMeta*> metaByCategory(const std::string& category) const;
-    std::vector<std::string> categories() const;
+    // 批量操作
+    QVector<ParameterDef> allParameters() const { return m_params; }
+    QJsonObject toJson() const;
+    bool fromJson(const QJsonObject& json);
 
-    // 导入/导出
-    bool exportToFile(const std::string& filePath);
-    bool importFromFile(const std::string& filePath);
-
-    // 下载全部参数到设备
-    void downloadAll();
-
-    // 缓存管理
-    void invalidateCache(uint16_t address);
-    void invalidateAll();
-
-    size_t parameterCount() const;
+    // 文件操作
+    bool saveToFile(const QString& filePath);
+    bool loadFromFile(const QString& filePath);
 
 signals:
-    void parameterChanged(const ParamChangeEvent& event);
-    void descriptionLoaded(const std::string& filePath);
-    void downloadProgress(int current, int total);
+    void parameterChanged(int index, const QString& name, const QVariant& value);
+    void parametersLoaded();
+    void parametersSaved();
 
 private:
-    ParameterManager();
-    struct Impl;
-    std::unique_ptr<Impl> d;
+    QVector<ParameterDef> m_params;
+};
+
+// ============================================================
+// 参数编辑面板
+// ============================================================
+class ParameterWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit ParameterWidget(QWidget* parent = nullptr);
+
+    void setParameterManager(ParameterManager* mgr);
+    void refresh();
+
+    void saveToFile();
+    void loadFromFile();
+
+private:
+    ParameterManager* m_mgr;
+    QWidget* m_contentWidget;
 };
 
 } // namespace MotorStudio

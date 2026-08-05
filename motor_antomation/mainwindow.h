@@ -12,7 +12,16 @@
 #include <QPushButton>
 #include <QTimer>
 
-namespace MotorStudio { class SerialTransport; }
+namespace MotorStudio {
+class SerialTransport;
+class VofaParser;
+class ChannelManager;
+class CurveWidget;
+class DashboardWidget;
+class FaultWidget;
+class ParameterWidget;
+class ParameterManager;
+}
 
 class MainWindow : public QMainWindow
 {
@@ -41,6 +50,9 @@ private slots:
     void onConnect();
     void onDisconnect();
     void refreshSerialPorts();
+    void onExportCSV();
+    void onSaveProject();
+    void onLoadProject();
 
 private:
     void setupMenuBar();
@@ -48,6 +60,8 @@ private:
     void setupStatusBar();
     void setupCentralWidget();
     void setupConnections();
+    void setupDataPipeline();
+    void createDefaultPages();
 
     // 菜单
     QMenu *m_fileMenu;
@@ -81,6 +95,15 @@ private:
 
     // 串口传输
     MotorStudio::SerialTransport *m_serialTransport;
+    MotorStudio::VofaParser *m_vofaParser;
+    MotorStudio::ChannelManager *m_channelManager;
+    MotorStudio::ParameterManager *m_paramManager;
+
+    // UI 组件
+    MotorStudio::CurveWidget *m_curveWidget;
+    MotorStudio::DashboardWidget *m_dashboardWidget;
+    MotorStudio::FaultWidget *m_faultWidget;
+    MotorStudio::ParameterWidget *m_paramWidget;
 };
 
 #endif // MAINWINDOW_H
