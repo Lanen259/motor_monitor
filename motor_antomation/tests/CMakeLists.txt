@@ -1,13 +1,13 @@
 enable_testing()
 
-# 测试可执行文件
+# 测试可执行文�?
 add_executable(MotorStudioTests
     test_main.cpp
 )
 
 target_link_libraries(MotorStudioTests PRIVATE
-    Qt6::Core
-    Qt6::Test
+    Qt5::Core
+    Qt5::Test
     MotorStudioCore
     MotorStudioCommunication
     MotorStudioDataBus
@@ -29,7 +29,7 @@ add_executable(MotorStudioPhase3Test
 )
 
 target_link_libraries(MotorStudioPhase3Test PRIVATE
-    Qt6::Core
+    Qt5::Core
     MotorStudioCore
     MotorStudioCommunication
     MotorStudioDataBus

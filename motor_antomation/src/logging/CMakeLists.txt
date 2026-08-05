@@ -5,6 +5,6 @@ add_library(MotorStudioLogging STATIC
 
 target_include_directories(MotorStudioLogging PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(MotorStudioLogging PUBLIC
-    Qt6::Core
+    Qt5::Core
     MotorStudioCore
 )

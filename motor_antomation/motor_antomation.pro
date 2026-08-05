@@ -7,6 +7,7 @@ CONFIG += c++17
 # Qt 5.14 MinGW 7.3 兼容
 win32-g++ {
     QMAKE_CXXFLAGS += -std=c++17
+    LIBS += -lpthread
 }
 
 DEFINES += QT_DEPRECATED_WARNINGS

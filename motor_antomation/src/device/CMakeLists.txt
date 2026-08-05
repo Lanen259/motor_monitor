@@ -5,7 +5,7 @@ add_library(MotorStudioDevice STATIC
 
 target_include_directories(MotorStudioDevice PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(MotorStudioDevice PUBLIC
-    Qt6::Core
+    Qt5::Core
     MotorStudioCore
     MotorStudioCommunication
 )

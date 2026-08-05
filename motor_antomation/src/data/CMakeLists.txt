@@ -10,7 +10,7 @@ add_library(MotorStudioData STATIC
 
 target_include_directories(MotorStudioData PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(MotorStudioData PUBLIC
-    Qt6::Core
+    Qt5::Core
     MotorStudioCore
     MotorStudioDataBus
 )

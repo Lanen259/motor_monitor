@@ -23,9 +23,9 @@ add_library(MotorStudioCommunication STATIC
 
 target_include_directories(MotorStudioCommunication PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(MotorStudioCommunication PUBLIC
-    Qt6::Core
-    Qt6::SerialPort
-    Qt6::SerialBus
-    Qt6::Network
+    Qt5::Core
+    Qt5::SerialPort
+    Qt5::SerialBus
+    Qt5::Network
     MotorStudioCore
 )
