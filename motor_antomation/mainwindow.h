@@ -12,6 +12,8 @@
 #include <QPushButton>
 #include <QTimer>
 
+namespace MotorStudio { class SerialTransport; }
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -76,6 +78,9 @@ private:
 
     // 刷新定时器
     QTimer *m_portRefreshTimer;
+
+    // 串口传输
+    MotorStudio::SerialTransport *m_serialTransport;
 };
 
 #endif // MAINWINDOW_H

@@ -1,6 +1,7 @@
 #pragma once
 #include "ITransport.h"
 #include <memory>
+#include <QSerialPort>
 
 namespace MotorStudio {
 
@@ -16,9 +17,23 @@ public:
     bool send(const QByteArray& data) override;
     std::string transportType() const override { return "Serial"; }
 
+    // 串口特定接口
+    QStringList availablePorts() const;
+    QString portName() const;
+    qint32 baudRate() const;
+    QString errorString() const;
+
+private slots:
+    void onReadyRead();
+    void onErrorOccurred(QSerialPort::SerialPortError error);
+
 private:
-    struct Impl;
-    std::unique_ptr<Impl> d;
+    bool parseConfig(const std::string& config, QString& port, qint32& baud);
+
+    QSerialPort* m_serial;
+    QString m_portName;
+    qint32 m_baudRate;
+    QByteArray m_readBuffer;
 };
 
 } // namespace MotorStudio

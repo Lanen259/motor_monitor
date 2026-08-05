@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "communication/transport/SerialTransport.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -16,10 +17,14 @@
 #include <QSerialPortInfo>
 #include <QTimer>
 #include <QSettings>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_tabWidget(nullptr)
+    , m_serialTransport(new MotorStudio::SerialTransport(this))
 {
     setWindowTitle("Motor Automation");
     resize(1200, 800);
@@ -30,6 +35,33 @@ MainWindow::MainWindow(QWidget *parent)
     setupStatusBar();
     setupCentralWidget();
     setupConnections();
+
+    // 串口传输信号
+    connect(m_serialTransport, &MotorStudio::SerialTransport::connected, this, [this]() {
+        m_connectionStatus->setText(tr(" 已连接: %1 @ %2 ")
+            .arg(m_serialTransport->portName())
+            .arg(m_serialTransport->baudRate()));
+        m_connectionStatus->setStyleSheet("QLabel { color: green; font-weight: bold; }");
+        m_connectBtn->setEnabled(false);
+        m_disconnectBtn->setEnabled(true);
+        m_portCombo->setEnabled(false);
+        m_baudCombo->setEnabled(false);
+        statusBar()->showMessage(tr("已连接"), 5000);
+    });
+
+    connect(m_serialTransport, &MotorStudio::SerialTransport::disconnected, this, [this]() {
+        m_connectionStatus->setText(tr(" 未连接 "));
+        m_connectionStatus->setStyleSheet("QLabel { color: gray; font-weight: bold; }");
+        m_connectBtn->setEnabled(true);
+        m_disconnectBtn->setEnabled(false);
+        m_portCombo->setEnabled(true);
+        m_baudCombo->setEnabled(true);
+        statusBar()->showMessage(tr("已断开"), 3000);
+    });
+
+    connect(m_serialTransport, &MotorStudio::SerialTransport::errorOccurred, this, [this](const std::string& msg) {
+        statusBar()->showMessage(tr("错误: %1").arg(QString::fromStdString(msg)), 10000);
+    });
 
     // 初始刷新串口列表
     refreshSerialPorts();
@@ -225,39 +257,29 @@ void MainWindow::onAbout()
 
 void MainWindow::onConnect()
 {
-    QString port = m_portCombo->currentText();
+    QString port = m_portCombo->currentData().toString();
+    if (port.isEmpty()) {
+        port = m_portCombo->currentText().split('(').first().trimmed();
+    }
     if (port.isEmpty()) {
         statusBar()->showMessage(tr("未选择串口"), 3000);
         return;
     }
 
     int baud = m_baudCombo->currentText().toInt();
-    emit connectRequested(port, baud);
 
-    m_connectionStatus->setText(tr(" 已连接: %1 @ %2 ").arg(port).arg(baud));
-    m_connectionStatus->setStyleSheet("QLabel { color: green; font-weight: bold; }");
+    // 使用 JSON 配置格式
+    QJsonObject config;
+    config["port"] = port;
+    config["baud"] = baud;
+    std::string configStr = QJsonDocument(config).toJson(QJsonDocument::Compact).toStdString();
 
-    m_connectBtn->setEnabled(false);
-    m_disconnectBtn->setEnabled(true);
-    m_portCombo->setEnabled(false);
-    m_baudCombo->setEnabled(false);
-
-    statusBar()->showMessage(tr("已连接 %1 @ %2 bps").arg(port).arg(baud), 5000);
+    m_serialTransport->open(configStr);
 }
 
 void MainWindow::onDisconnect()
 {
-    emit disconnectRequested();
-
-    m_connectionStatus->setText(tr(" 未连接 "));
-    m_connectionStatus->setStyleSheet("QLabel { color: gray; font-weight: bold; }");
-
-    m_connectBtn->setEnabled(true);
-    m_disconnectBtn->setEnabled(false);
-    m_portCombo->setEnabled(true);
-    m_baudCombo->setEnabled(true);
-
-    statusBar()->showMessage(tr("已断开"), 3000);
+    m_serialTransport->close();
 }
 
 void MainWindow::refreshSerialPorts()
