@@ -19,14 +19,14 @@ namespace MotorStudio {
 static QString stepTypeLabel(StepType t)
 {
     switch (t) {
-    case StepType::SetParameter: return QStringLiteral("SET");
-    case StepType::Wait:         return QStringLiteral("WAIT");
-    case StepType::ReadParameter: return QStringLiteral("READ");
-    case StepType::Assert:       return QStringLiteral("ASRT");
-    case StepType::RecordData:   return QStringLiteral("REC");
-    case StepType::StartMotor:   return QStringLiteral("START");
-    case StepType::StopMotor:    return QStringLiteral("STOP");
-    case StepType::Custom:       return QStringLiteral("CUST");
+    case StepType::SetParameter: return QStringLiteral("设置");
+    case StepType::Wait:         return QStringLiteral("等待");
+    case StepType::ReadParameter: return QStringLiteral("读取");
+    case StepType::Assert:       return QStringLiteral("断言");
+    case StepType::RecordData:   return QStringLiteral("记录");
+    case StepType::StartMotor:   return QStringLiteral("启动");
+    case StepType::StopMotor:    return QStringLiteral("停止");
+    case StepType::Custom:       return QStringLiteral("自定义");
     }
     return QStringLiteral("???");
 }
@@ -97,36 +97,36 @@ void AutomationWidget::setupUi()
     auto* topBar = new QHBoxLayout();
     topBar->setSpacing(8);
 
-    m_caseNameLabel = new QLabel(tr("No test case loaded"));
+    m_caseNameLabel = new QLabel(tr("未加载测试用例"));
     m_caseNameLabel->setStyleSheet("color: #2196F3; font-size: 14px; font-weight: bold;");
     topBar->addWidget(m_caseNameLabel);
 
-    m_statusLabel = new QLabel(tr("Idle"));
+    m_statusLabel = new QLabel(tr("空闲"));
     m_statusLabel->setStyleSheet("color: #757575; font-size: 13px;");
     topBar->addWidget(m_statusLabel);
 
     topBar->addStretch();
 
-    m_loadBtn = new QPushButton(tr("Load Test..."));
+    m_loadBtn = new QPushButton(tr("加载测试..."));
     m_loadBtn->setFixedHeight(30);
     topBar->addWidget(m_loadBtn);
 
-    m_runBtn = new QPushButton(tr("Run"));
+    m_runBtn = new QPushButton(tr("运行"));
     m_runBtn->setFixedHeight(30);
     m_runBtn->setEnabled(false);
     topBar->addWidget(m_runBtn);
 
-    m_pauseBtn = new QPushButton(tr("Pause"));
+    m_pauseBtn = new QPushButton(tr("暂停"));
     m_pauseBtn->setFixedHeight(30);
     m_pauseBtn->setEnabled(false);
     topBar->addWidget(m_pauseBtn);
 
-    m_resumeBtn = new QPushButton(tr("Resume"));
+    m_resumeBtn = new QPushButton(tr("继续"));
     m_resumeBtn->setFixedHeight(30);
     m_resumeBtn->setEnabled(false);
     topBar->addWidget(m_resumeBtn);
 
-    m_stopBtn = new QPushButton(tr("Stop"));
+    m_stopBtn = new QPushButton(tr("停止"));
     m_stopBtn->setFixedHeight(30);
     m_stopBtn->setEnabled(false);
     topBar->addWidget(m_stopBtn);
@@ -146,7 +146,7 @@ void AutomationWidget::setupUi()
 
     // — Left: QTableWidget —
     m_stepTable = new QTableWidget(0, 5); // #, Type, Params, Status, Duration
-    m_stepTable->setHorizontalHeaderLabels({tr("#"), tr("Type"), tr("Params"), tr("Status"), tr("Duration")});
+    m_stepTable->setHorizontalHeaderLabels({tr("步骤"), tr("类型"), tr("参数"), tr("状态"), tr("耗时")});
     m_stepTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_stepTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_stepTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -164,7 +164,7 @@ void AutomationWidget::setupUi()
     splitter->addWidget(m_stepTable);
 
     // — Right: Step detail QGroupBox —
-    m_detailGroup = new QGroupBox(tr("Step Detail"));
+    m_detailGroup = new QGroupBox(tr("步骤详情"));
     m_detailLayout = new QFormLayout(m_detailGroup);
     m_detailLayout->setContentsMargins(12, 16, 12, 12);
     m_detailLayout->setSpacing(8);
@@ -174,10 +174,10 @@ void AutomationWidget::setupUi()
     m_detailTimeoutLabel = new QLabel(QStringLiteral("-"));
     m_detailRetryLabel   = new QLabel(QStringLiteral("-"));
 
-    auto* detailTypeLbl    = new QLabel(tr("Type:"));
-    auto* detailDescLbl    = new QLabel(tr("Description:"));
-    auto* detailTimeoutLbl = new QLabel(tr("Timeout:"));
-    auto* detailRetryLbl   = new QLabel(tr("Retry Count:"));
+    auto* detailTypeLbl    = new QLabel(tr("类型:"));
+    auto* detailDescLbl    = new QLabel(tr("描述:"));
+    auto* detailTimeoutLbl = new QLabel(tr("超时:"));
+    auto* detailRetryLbl   = new QLabel(tr("重试次数:"));
 
     QString detailLabelStyle = "color: #212121; font-size: 12px;";
     QString detailValueStyle = "color: #757575; font-size: 12px; font-weight: bold;";
@@ -204,7 +204,7 @@ void AutomationWidget::setupUi()
     mainLayout->addWidget(splitter, 1); // stretch=1
 
     // ---- Row 3: Execution log ----
-    auto* logTitle = new QLabel(tr("Execution Log"));
+    auto* logTitle = new QLabel(tr("执行日志"));
     logTitle->setStyleSheet("color: #2196F3; font-size: 12px; font-weight: bold;");
     mainLayout->addWidget(logTitle);
 
@@ -447,7 +447,7 @@ void AutomationWidget::showSummary(const TestResult& result)
     if (m_skippedSteps < 0) m_skippedSteps = 0;
 
     QString summary = QString(
-        "Summary:  Total: %1  |  Passed: %2  |  Failed: %3  |  Skipped: %4  |  Duration: %5 ms")
+        "汇总: 总计:%1 | 通过:%2 | 失败:%3 | 跳过:%4 | 耗时:%5 ms")
         .arg(m_totalSteps)
         .arg(m_passedSteps)
         .arg(m_failedSteps)
@@ -468,19 +468,19 @@ void AutomationWidget::showSummary(const TestResult& result)
 void AutomationWidget::onLoadTestCase()
 {
     QString path = QFileDialog::getOpenFileName(
-        this, tr("Load Test Case"), QString(),
-        tr("JSON Files (*.json);;All Files (*)"));
+        this, tr("加载测试用例"), QString(),
+        tr("JSON 文件 (*.json);;所有文件 (*)"));
 
     if (path.isEmpty()) return;
 
     if (!m_engine) {
-        QMessageBox::warning(this, tr("Error"), tr("Automation engine not initialized"));
+        QMessageBox::warning(this, tr("错误"), tr("自动化引擎未初始化"));
         return;
     }
 
     bool ok = m_engine->loadTestCase(path.toStdString());
     if (!ok) {
-        QMessageBox::warning(this, tr("Error"), tr("Failed to load test case.\nCheck file format."));
+        QMessageBox::warning(this, tr("错误"), tr("加载测试用例失败。\n请检查文件格式。"));
         return;
     }
 
@@ -492,13 +492,13 @@ void AutomationWidget::onLoadTestCase()
 
     m_stepLog->clear();
     m_stepLog->appendPlainText(
-        QString("[%1] Loaded: %2 (%3 steps)")
+        QString("[%1] 已加载: %2 (%3 步)")
             .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
                  QString::fromStdString(tc.name))
             .arg(tc.steps.size()));
 
     m_progressBar->setValue(0);
-    m_statusLabel->setText(tr("Ready"));
+    m_statusLabel->setText(tr("就绪"));
     m_statusLabel->setStyleSheet("color: #4CAF50; font-size: 13px;");
     m_summaryLabel->setVisible(false);
 
@@ -511,11 +511,11 @@ void AutomationWidget::onRun()
 
     m_stepLog->clear();
     m_stepLog->appendPlainText(
-        QString("[%1] Starting test: %2")
+        QString("[%1] 开始测试: %2")
             .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
                  QString::fromStdString(m_engine->currentTestCase().name)));
 
-    m_statusLabel->setText(tr("Running..."));
+    m_statusLabel->setText(tr("运行中..."));
     m_statusLabel->setStyleSheet("color: #2196F3; font-size: 13px; font-weight: bold;");
     m_progressBar->setValue(0);
     m_summaryLabel->setVisible(false);
@@ -540,7 +540,7 @@ void AutomationWidget::onStop()
 {
     if (!m_engine) return;
     m_engine->stop();
-    m_statusLabel->setText(tr("Stopping..."));
+    m_statusLabel->setText(tr("停止中..."));
     m_statusLabel->setStyleSheet("color: #F44336; font-size: 13px;");
 }
 
@@ -548,7 +548,7 @@ void AutomationWidget::onPause()
 {
     if (!m_engine) return;
     m_engine->pause();
-    m_statusLabel->setText(tr("Paused"));
+    m_statusLabel->setText(tr("已暂停"));
     m_statusLabel->setStyleSheet("color: #FF9800; font-size: 13px; font-weight: bold;");
     updateButtonStates(true, true);
 }
@@ -557,7 +557,7 @@ void AutomationWidget::onResume()
 {
     if (!m_engine) return;
     m_engine->resume();
-    m_statusLabel->setText(tr("Running..."));
+    m_statusLabel->setText(tr("运行中..."));
     m_statusLabel->setStyleSheet("color: #2196F3; font-size: 13px; font-weight: bold;");
     updateButtonStates(true, false);
 }
@@ -610,7 +610,7 @@ void AutomationWidget::onStepSelected()
 void AutomationWidget::onTestStarted(const std::string& caseName)
 {
     m_stepLog->appendPlainText(
-        QString("[%1] === Test Started: %2 ===")
+        QString("[%1] === 测试开始: %2 ===")
             .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
                  QString::fromStdString(caseName)));
 }
@@ -620,14 +620,14 @@ void AutomationWidget::onTestCompleted(const TestResult& result)
     QString status = result.passed ? "PASSED" : "FAILED";
 
     m_stepLog->appendPlainText(
-        QString("[%1] === Test %2 === (duration: %3 ms)")
+        QString("[%1] === 测试%2 === (耗时: %3 ms)")
             .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
                  status)
             .arg(result.duration.count()));
 
     if (!result.passed) {
         m_stepLog->appendPlainText(
-            QString("  Error: %1").arg(QString::fromStdString(result.errorMessage)));
+            QString("  错误: %1").arg(QString::fromStdString(result.errorMessage)));
     }
 
     m_statusLabel->setText(status);

@@ -12,9 +12,9 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 
 ```
 ┌──────────┬──────────────────────────┬──────────┐
-│  导航栏   │       工作区              │  属性面板  │
+│  导航     │       工作区              │  属性面板  │
 │          │                          │          │
-│ Dashboard│                          │          │
+│ 仪表盘    │                          │          │
 │ 波形      │                          │          │
 │ 自动化    │                          │          │
 │ 设备      │                          │          │
@@ -33,14 +33,14 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 
 ## 2. 功能页面
 
-### 2.1 Dashboard（仪表盘）
+### 2.1 仪表盘（Dashboard）
 
 仪表盘以卡片形式显示电机运行的关键指标：
 
 | 卡片 | 说明 |
 |------|------|
-| 电机状态 | STOPPED / RUNNING / FAULT |
-| 通信状态 | DISCONNECTED / CONNECTED / TIMEOUT |
+| 电机状态 | 已停止 / 运行中 / 故障 |
+| 通信状态 | 已断开 / 已连接 / 超时 |
 | 电压 | 实时电压值 |
 | 电流 | 实时电流值 |
 | 转速 | 电机转速 (RPM) |
@@ -49,7 +49,7 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 
 **告警级别**: 绿色(正常) → 黄色(警告) → 红色(严重)
 
-### 2.2 波形 / Oscilloscope（曲线显示）
+### 2.2 波形 / 曲线显示
 
 实时显示电机数据的波形曲线。
 
@@ -72,7 +72,7 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 - 勾选/取消"可见"控制曲线显示/隐藏
 - 删除按钮可移除通道
 
-### 2.3 Automation（自动化测试）
+### 2.3 自动化测试
 
 用于加载和执行自动化测试用例。
 
@@ -187,7 +187,7 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 | File → Save Project | 保存当前工程 |
 | File → Load Project | 加载工程文件 |
 | File → Exit | 退出程序 |
-| Settings → Channel Configuration | 通道配置（名称/单位/颜色/缩放） |
+| 设置(S) → 通道配置 | 通道配置（名称/单位/颜色/缩放） |
 | Settings → Settings | 系统设置 |
 | Help → About | 关于 |
 

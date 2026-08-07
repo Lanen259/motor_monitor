@@ -48,7 +48,7 @@ QWidget* DynamicWidgetFactory::createWidget(const QString& type, QWidget* parent
 
     if (t == "input") {
         QLineEdit* input = new QLineEdit(parent);
-        input->setPlaceholderText("Enter value...");
+        input->setPlaceholderText("输入数值...");
         input->setMinimumHeight(30);
         input->setStyleSheet(
             "QLineEdit {"

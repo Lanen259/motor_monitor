@@ -20,7 +20,7 @@ const int ChannelConfigDialog::kNumDefaultColors = 12;
 ChannelConfigDialog::ChannelConfigDialog(QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(tr("Channel Configuration"));
+    setWindowTitle(tr("通道配置"));
     setMinimumSize(700, 400);
     setupUi();
 }
@@ -30,13 +30,13 @@ void ChannelConfigDialog::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // Header
-    auto* header = new QLabel(tr("Configure channel names, units, colors, and scaling factors."));
+    auto* header = new QLabel(tr("配置通道名称、单位、颜色和缩放系数。"));
     header->setWordWrap(true);
     layout->addWidget(header);
 
     // Table
     m_table = new QTableWidget(0, 6, this);
-    m_table->setHorizontalHeaderLabels({tr("Name"), tr("Unit"), tr("Type"), tr("Scale"), tr("Offset"), tr("Color")});
+    m_table->setHorizontalHeaderLabels({tr("名称"), tr("单位"), tr("类型"), tr("缩放"), tr("偏移"), tr("颜色")});
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -47,10 +47,10 @@ void ChannelConfigDialog::setupUi()
 
     // Buttons
     auto* btnLayout = new QHBoxLayout();
-    m_addBtn = new QPushButton(tr("Add Channel"));
-    m_removeBtn = new QPushButton(tr("Remove Selected"));
-    m_applyBtn = new QPushButton(tr("Apply"));
-    m_closeBtn = new QPushButton(tr("Close"));
+    m_addBtn = new QPushButton(tr("添加通道"));
+    m_removeBtn = new QPushButton(tr("删除选中"));
+    m_applyBtn = new QPushButton(tr("应用"));
+    m_closeBtn = new QPushButton(tr("关闭"));
 
     connect(m_addBtn, &QPushButton::clicked, this, &ChannelConfigDialog::onAddChannel);
     connect(m_removeBtn, &QPushButton::clicked, this, &ChannelConfigDialog::onRemoveChannel);
@@ -112,7 +112,7 @@ void ChannelConfigDialog::loadFromRegistry()
         auto* colorItem = new QTableWidgetItem();
         colorItem->setBackground(row.color);
         colorItem->setFlags(colorItem->flags() & ~Qt::ItemIsEditable);
-        colorItem->setToolTip(tr("Click to change color"));
+        colorItem->setToolTip(tr("点击修改颜色"));
         m_table->setItem(r, 5, colorItem);
     }
 
@@ -218,7 +218,7 @@ void ChannelConfigDialog::onColorClicked(int row, int col)
     if (col != 5 || row < 0 || row >= m_rows.size()) return;
 
     QColor current = m_rows[row].color;
-    QColor selected = QColorDialog::getColor(current, this, tr("Select Channel Color"));
+    QColor selected = QColorDialog::getColor(current, this, tr("选择通道颜色"));
     if (selected.isValid()) {
         m_rows[row].color = selected;
         m_table->item(row, col)->setBackground(selected);

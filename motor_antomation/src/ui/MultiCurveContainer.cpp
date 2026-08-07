@@ -84,7 +84,7 @@ MultiCurveContainer::MultiCurveContainer(CurveEngine* engine, QWidget* parent)
 
     // Start in Tab mode with one default tab
     m_gridContainer->hide();
-    addTab(tr("Curve 1"));
+    addTab(tr("曲线 1"));
 }
 
 MultiCurveContainer::~MultiCurveContainer()
@@ -109,13 +109,13 @@ void MultiCurveContainer::setupToolbar()
     m_toolbarLayout->setContentsMargins(8, 2, 8, 2);
     m_toolbarLayout->setSpacing(8);
 
-    QLabel* modeLabel = new QLabel(tr("Mode:"));
+    QLabel* modeLabel = new QLabel(tr("模式:"));
     modeLabel->setStyleSheet("color: #757575; font-size: 12px;");
     m_toolbarLayout->addWidget(modeLabel);
 
     m_modeCombo = new QComboBox();
-    m_modeCombo->addItem(tr("Tab"), TabMode);
-    m_modeCombo->addItem(tr("Grid"), GridMode);
+    m_modeCombo->addItem(tr("标签页"), TabMode);
+    m_modeCombo->addItem(tr("网格"), GridMode);
     m_modeCombo->setCurrentIndex(0);
     m_modeCombo->setFixedWidth(80);
     m_modeCombo->setStyleSheet(
@@ -135,14 +135,14 @@ void MultiCurveContainer::setupToolbar()
     m_toolbarLayout->addWidget(m_modeCombo);
 
     // Grid size selector (visible only in grid mode)
-    m_gridLabel = new QLabel(tr("Grid:"));
+    m_gridLabel = new QLabel(tr("网格:"));
     m_gridLabel->setStyleSheet("color: #757575; font-size: 12px;");
     m_toolbarLayout->addWidget(m_gridLabel);
 
     m_gridSizeCombo = new QComboBox();
-    m_gridSizeCombo->addItem(tr("2x2"), 0);   // index 0 = 2x2
-    m_gridSizeCombo->addItem(tr("3x2"), 1);   // index 1 = 3x2
-    m_gridSizeCombo->addItem(tr("4x3"), 2);   // index 2 = 4x3
+    m_gridSizeCombo->addItem(tr("2×2"), 0);   // index 0 = 2x2
+    m_gridSizeCombo->addItem(tr("3×2"), 1);   // index 1 = 3x2
+    m_gridSizeCombo->addItem(tr("4×3"), 2);   // index 2 = 4x3
     m_gridSizeCombo->setCurrentIndex(0);
     m_gridSizeCombo->setFixedWidth(70);
     m_gridSizeCombo->setStyleSheet(m_modeCombo->styleSheet());
@@ -151,7 +151,7 @@ void MultiCurveContainer::setupToolbar()
     m_toolbarLayout->addWidget(m_gridSizeCombo);
 
     // Add Tab button (visible only in tab mode)
-    m_addTabBtn = new QPushButton(tr("+ Tab"));
+    m_addTabBtn = new QPushButton(tr("+ 标签"));
     m_addTabBtn->setFixedHeight(24);
     m_addTabBtn->setFixedWidth(60);
     m_addTabBtn->setStyleSheet(
@@ -284,7 +284,7 @@ void MultiCurveContainer::rebuildLayout()
 
         // Add all widgets as tabs
         for (int i = 0; i < widgets.size(); ++i) {
-            QString tabName = tr("Curve %1").arg(i + 1);
+            QString tabName = tr("曲线 %1").arg(i + 1);
             // Try to preserve previous names if any
             m_tabWidget->addTab(widgets[i], tabName);
         }
@@ -347,7 +347,7 @@ int MultiCurveContainer::addTab(const QString& name)
     m_curveWidgets.append(cw);
 
     QString tabName = name.isEmpty()
-        ? tr("Curve %1").arg(m_tabCounter++)
+        ? tr("曲线 %1").arg(m_tabCounter++)
         : name;
 
     if (m_mode == TabMode) {
@@ -432,8 +432,8 @@ void MultiCurveContainer::onTabBarDoubleClicked(int index)
     QString currentName = m_tabWidget->tabText(index);
     QString newName = QInputDialog::getText(
         this,
-        tr("Rename Tab"),
-        tr("Tab name:"),
+        tr("重命名标签"),
+        tr("标签名称:"),
         QLineEdit::Normal,
         currentName,
         &ok

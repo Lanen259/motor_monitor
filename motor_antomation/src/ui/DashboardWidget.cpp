@@ -150,18 +150,18 @@ QString DashboardCard::formatValue() const
     case CardType::MotorState: {
         int state = static_cast<int>(m_value);
         switch (state) {
-        case 0: return QStringLiteral("STOPPED");
-        case 1: return QStringLiteral("RUNNING");
-        case 2: return QStringLiteral("FAULT");
+        case 0: return QStringLiteral("已停止");
+        case 1: return QStringLiteral("运行中");
+        case 2: return QStringLiteral("故障");
         default: return QString::number(state);
         }
     }
     case CardType::CommState: {
         int state = static_cast<int>(m_value);
         switch (state) {
-        case 0: return QStringLiteral("DISCONNECTED");
-        case 1: return QStringLiteral("CONNECTED");
-        case 2: return QStringLiteral("TIMEOUT");
+        case 0: return QStringLiteral("已断开");
+        case 1: return QStringLiteral("已连接");
+        case 2: return QStringLiteral("超时");
         default: return QString::number(state);
         }
     }

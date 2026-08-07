@@ -30,17 +30,17 @@ void CurveManagerPanel::setupUi()
     auto* toolbar = new QHBoxLayout();
     toolbar->setContentsMargins(4, 2, 4, 2);
 
-    m_titleLabel = new QLabel(tr("Curve Manager"));
+    m_titleLabel = new QLabel(tr("曲线管理器"));
     m_titleLabel->setStyleSheet(
         "color: #2196F3; font-size: 13px; font-weight: bold;"
     );
     toolbar->addWidget(m_titleLabel);
     toolbar->addStretch();
 
-    toolbar->addWidget(new QLabel(tr("Window:")));
+    toolbar->addWidget(new QLabel(tr("窗口:")));
     m_windowCombo = new QComboBox();
     m_windowCombo->setMinimumWidth(90);
-    m_windowCombo->setToolTip(tr("Target window for channel add/delete"));
+    m_windowCombo->setToolTip(tr("通道添加/删除的目标窗口"));
     m_windowCombo->setStyleSheet(
         "QComboBox { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
         " border-radius: 3px; padding: 2px 6px; }"
@@ -52,8 +52,8 @@ void CurveManagerPanel::setupUi()
             this, &CurveManagerPanel::onTargetWindowChanged);
     toolbar->addWidget(m_windowCombo);
 
-    m_addBtn = new QPushButton(tr("+ Add"));
-    m_addBtn->setToolTip(tr("Add channel from registry to current window"));
+    m_addBtn = new QPushButton(tr("+ 添加"));
+    m_addBtn->setToolTip(tr("从注册表添加通道到当前窗口"));
     m_addBtn->setStyleSheet(
         "QPushButton { background: #2196F3; color: #ffffff; border: none;"
         " border-radius: 3px; padding: 3px 10px; font-weight: bold; }"
@@ -62,8 +62,8 @@ void CurveManagerPanel::setupUi()
     connect(m_addBtn, &QPushButton::clicked, this, &CurveManagerPanel::onAddChannel);
     toolbar->addWidget(m_addBtn);
 
-    m_refreshBtn = new QPushButton(tr("Refresh"));
-    m_refreshBtn->setToolTip(tr("Reload channel list from registry"));
+    m_refreshBtn = new QPushButton(tr("刷新"));
+    m_refreshBtn->setToolTip(tr("从注册表重新加载通道列表"));
     m_refreshBtn->setStyleSheet(
         "QPushButton { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
         " border-radius: 3px; padding: 3px 10px; }"
@@ -77,8 +77,8 @@ void CurveManagerPanel::setupUi()
     // ---- Channel table ----
     m_table = new QTableWidget(0, COL_COUNT, this);
     m_table->setHorizontalHeaderLabels({
-        tr("Name"), tr("Color"), tr("Unit"),
-        tr("Y-min"), tr("Y-max"), tr("Visible"), tr("Action")
+        tr("名称"), tr("颜色"), tr("单位"),
+        tr("Y轴最小"), tr("Y轴最大"), tr("可见"), tr("操作")
     });
 
     auto* hdr = m_table->horizontalHeader();
@@ -142,7 +142,7 @@ void CurveManagerPanel::setCurveContainer(MultiCurveContainer* container)
     if (container) {
         int count = container->curveWidgetCount();
         for (int i = 0; i < count; ++i) {
-            m_windowCombo->addItem(tr("Window %1").arg(i + 1), i);
+            m_windowCombo->addItem(tr("窗口 %1").arg(i + 1), i);
         }
     }
     m_windowCombo->blockSignals(false);
@@ -228,7 +228,7 @@ void CurveManagerPanel::loadFromRegistry()
         auto* colorItem = new QTableWidgetItem();
         colorItem->setBackground(row.color);
         colorItem->setFlags(colorItem->flags() & ~Qt::ItemIsEditable);
-        colorItem->setToolTip(tr("Double-click to change color"));
+        colorItem->setToolTip(tr("双击修改颜色"));
         m_table->setItem(r, COL_COLOR, colorItem);
 
         // COL_UNIT — read-only display
@@ -274,7 +274,7 @@ void CurveManagerPanel::loadFromRegistry()
         auto* btnWidget = new QWidget();
         auto* btnLayout = new QHBoxLayout(btnWidget);
         btnLayout->setContentsMargins(2, 1, 2, 1);
-        auto* delBtn = new QPushButton(tr("Del"));
+        auto* delBtn = new QPushButton(tr("删除"));
         delBtn->setFixedSize(44, 22);
         delBtn->setStyleSheet(
             "QPushButton { background: #F44336; color: #ffffff; border: none;"
@@ -305,7 +305,7 @@ void CurveManagerPanel::loadFromRegistry()
         m_windowCombo->clear();
         int count = m_curveContainer->curveWidgetCount();
         for (int i = 0; i < count; ++i) {
-            m_windowCombo->addItem(tr("Window %1").arg(i + 1), i);
+            m_windowCombo->addItem(tr("窗口 %1").arg(i + 1), i);
         }
         if (prev >= 0 && prev < count) {
             m_windowCombo->setCurrentIndex(prev);
@@ -392,7 +392,7 @@ void CurveManagerPanel::onCellDoubleClicked(int row, int col)
     if (col == COL_COLOR && row >= 0 && row < static_cast<int>(m_rows.size())) {
         QColor current = m_rows[row].color;
         QColor selected = QColorDialog::getColor(current, this,
-                                                  tr("Select Channel Color"));
+                                                  tr("选择通道颜色"));
         if (!selected.isValid()) return;
 
         m_rows[row].color = selected;
@@ -441,8 +441,8 @@ void CurveManagerPanel::onRemoveChannel(int row)
 
     auto result = QMessageBox::question(
         this,
-        tr("Delete Channel"),
-        tr("Remove channel \"%1\" (ID %2) from all windows and the registry?")
+        tr("删除通道"),
+        tr("从所有窗口和注册表中删除通道 \"%1\" (ID %2)?")
             .arg(name).arg(tid),
         QMessageBox::Yes | QMessageBox::No
     );

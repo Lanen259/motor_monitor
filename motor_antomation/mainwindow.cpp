@@ -88,7 +88,7 @@ MainWindow::MainWindow(QWidget *parent)
         "QWidget { font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; }"
     );
 
-    setWindowTitle("Motor Automation");
+    setWindowTitle("电机自动化平台");
     resize(1200, 800);
     setMinimumSize(800, 600);
 
@@ -144,79 +144,79 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupMenuBar()
 {
-    m_fileMenu = menuBar()->addMenu(tr("File(&F)"));
+    m_fileMenu = menuBar()->addMenu(tr("文件(&F)"));
 
-    m_importProjectAction = new QAction(tr("Import Project..."), this);
+    m_importProjectAction = new QAction(tr("导入工程..."), this);
     m_importProjectAction->setShortcut(QKeySequence("Ctrl+O"));
     m_fileMenu->addAction(m_importProjectAction);
 
-    m_exportProjectAction = new QAction(tr("Export Project..."), this);
+    m_exportProjectAction = new QAction(tr("导出工程..."), this);
     m_exportProjectAction->setShortcut(QKeySequence("Ctrl+S"));
     m_fileMenu->addAction(m_exportProjectAction);
 
     m_fileMenu->addSeparator();
 
-    m_exitAction = new QAction(tr("Exit(&X)"), this);
+    m_exitAction = new QAction(tr("退出(&X)"), this);
     m_exitAction->setShortcut(QKeySequence("Alt+F4"));
     m_fileMenu->addAction(m_exitAction);
 
-    m_viewMenu = menuBar()->addMenu(tr("View(&V)"));
-    m_viewMenu->addAction(tr("Default Layout"))->setEnabled(false);
+    m_viewMenu = menuBar()->addMenu(tr("视图(&V)"));
+    m_viewMenu->addAction(tr("默认布局"))->setEnabled(false);
 
-    m_settingsMenu = menuBar()->addMenu(tr("Settings(&S)"));
-    m_settingsAction = new QAction(tr("Preferences..."), this);
+    m_settingsMenu = menuBar()->addMenu(tr("设置(&S)"));
+    m_settingsAction = new QAction(tr("首选项..."), this);
     m_settingsMenu->addAction(m_settingsAction);
 
-    m_channelConfigAction = new QAction(tr("Channel Configuration..."), this);
+    m_channelConfigAction = new QAction(tr("通道配置..."), this);
     m_settingsMenu->addAction(m_channelConfigAction);
 
-    m_helpMenu = menuBar()->addMenu(tr("Help(&H)"));
-    m_aboutAction = new QAction(tr("About..."), this);
+    m_helpMenu = menuBar()->addMenu(tr("帮助(&H)"));
+    m_aboutAction = new QAction(tr("关于..."), this);
     m_helpMenu->addAction(m_aboutAction);
 }
 
 void MainWindow::setupToolBar()
 {
-    QToolBar *toolbar = addToolBar(tr("Main Toolbar"));
+    QToolBar *toolbar = addToolBar(tr("主工具栏"));
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(24, 24));
 
-    toolbar->addWidget(new QLabel(tr("  Port: ")));
+    toolbar->addWidget(new QLabel(tr(" 端口: ")));
     m_portCombo = new QComboBox();
     m_portCombo->setMinimumWidth(120);
-    m_portCombo->setToolTip(tr("Select serial port"));
+    m_portCombo->setToolTip(tr("选择串口"));
     toolbar->addWidget(m_portCombo);
 
-    toolbar->addWidget(new QLabel(tr(" Baud: ")));
+    toolbar->addWidget(new QLabel(tr(" 波特率: ")));
     m_baudCombo = new QComboBox();
     m_baudCombo->setMinimumWidth(100);
     m_baudCombo->addItems({"9600", "19200", "38400", "57600", "115200", "256000", "460800", "921600", "1000000", "2000000"});
     m_baudCombo->setCurrentText("256000");
-    m_baudCombo->setToolTip(tr("Select baud rate"));
+    m_baudCombo->setToolTip(tr("选择波特率"));
     toolbar->addWidget(m_baudCombo);
 
-    m_refreshBtn = new QPushButton(tr("Refresh"));
-    m_refreshBtn->setToolTip(tr("Refresh port list"));
+    m_refreshBtn = new QPushButton(tr("刷新"));
+    m_refreshBtn->setToolTip(tr("刷新端口列表"));
     toolbar->addWidget(m_refreshBtn);
 
     toolbar->addSeparator();
 
-    m_connectBtn = new QPushButton(tr("Connect"));
+    m_connectBtn = new QPushButton(tr("连接"));
     m_connectBtn->setStyleSheet("QPushButton { color: #4CAF50; font-weight: bold; }");
-    m_connectBtn->setToolTip(tr("Connect device"));
+    m_connectBtn->setToolTip(tr("连接设备"));
     toolbar->addWidget(m_connectBtn);
 
-    m_disconnectBtn = new QPushButton(tr("Disconnect"));
+    m_disconnectBtn = new QPushButton(tr("断开"));
     m_disconnectBtn->setEnabled(false);
     m_disconnectBtn->setStyleSheet("QPushButton { color: #F44336; }");
-    m_disconnectBtn->setToolTip(tr("Disconnect device"));
+    m_disconnectBtn->setToolTip(tr("断开设备"));
     toolbar->addWidget(m_disconnectBtn);
 
     toolbar->addSeparator();
 
     m_addWidgetBtn = new QPushButton(tr("+"));
     m_addWidgetBtn->setFixedWidth(36);
-    m_addWidgetBtn->setToolTip(tr("Add dynamic widget (Button / Slider / Input)"));
+    m_addWidgetBtn->setToolTip(tr("添加动态控件 (按钮/滑块/输入框)"));
     m_addWidgetBtn->setStyleSheet(
         "QPushButton { color: #1976D2; font-weight: bold; font-size: 16px; }"
         "QPushButton:hover { color: #2196F3; }"
@@ -226,14 +226,14 @@ void MainWindow::setupToolBar()
 
 void MainWindow::setupStatusBar()
 {
-    m_connectionStatus = new QLabel(tr(" Disconnected "));
+    m_connectionStatus = new QLabel(tr(" 已断开 "));
     m_connectionStatus->setStyleSheet("QLabel { color: #9E9E9E; font-weight: bold; }");
     statusBar()->addWidget(m_connectionStatus);
 
-    m_dataRate = new QLabel(tr(" Data: 0 fps "));
+    m_dataRate = new QLabel(tr(" 数据: 0 帧/秒 "));
     statusBar()->addPermanentWidget(m_dataRate);
 
-    statusBar()->showMessage(tr("Ready"), 3000);
+    statusBar()->showMessage(tr("就绪"), 3000);
 }
 
 // ============================================================
@@ -262,7 +262,7 @@ void MainWindow::setupCentralWidget()
 
 void MainWindow::setupNavPanel()
 {
-    QDockWidget *navDock = new QDockWidget(tr("Navigation"), this);
+    QDockWidget *navDock = new QDockWidget(tr("导航"), this);
     navDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     navDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
 
@@ -273,11 +273,11 @@ void MainWindow::setupNavPanel()
     m_navList->setMaximumWidth(220);
 
     // Navigation items (at least 5 entries as required)
-    m_navList->addItem(tr("Dashboard"));
-    m_navList->addItem(tr("Oscilloscope"));
-    m_navList->addItem(tr("Automation"));
-    m_navList->addItem(tr("Device"));
-    m_navList->addItem(tr("Settings"));
+    m_navList->addItem(tr("仪表盘"));
+    m_navList->addItem(tr("波形"));
+    m_navList->addItem(tr("自动化"));
+    m_navList->addItem(tr("设备"));
+    m_navList->addItem(tr("设置"));
 
     // Style the nav list with modern light theme
     m_navList->setStyleSheet(
@@ -322,7 +322,7 @@ void MainWindow::setupNavPanel()
 
 void MainWindow::setupPropertyDock()
 {
-    m_propertyDock = new QDockWidget(tr("Properties"), this);
+    m_propertyDock = new QDockWidget(tr("属性"), this);
     m_propertyDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     m_propertyDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     m_propertyDock->setMinimumWidth(200);
@@ -363,10 +363,10 @@ void MainWindow::setupPropertyDock()
         QVBoxLayout *lay = new QVBoxLayout(page);
         lay->setContentsMargins(0, 0, 0, 0);
         lay->setSpacing(2);
-        lay->addWidget(makeTitle(tr("Dashboard")));
-        m_propDashboardChannels = makeLabel(tr("Subscribed channels: 0"));
+        lay->addWidget(makeTitle(tr("仪表盘")));
+        m_propDashboardChannels = makeLabel(tr("订阅通道: 0"));
         lay->addWidget(m_propDashboardChannels);
-        m_propDashboardRate = makeLabel(tr("Refresh rate: 10 Hz"));
+        m_propDashboardRate = makeLabel(tr("刷新率: 10 Hz"));
         lay->addWidget(m_propDashboardRate);
         lay->addStretch();
         m_propertyStack->addWidget(page); // index 0
@@ -378,10 +378,10 @@ void MainWindow::setupPropertyDock()
         QVBoxLayout *lay = new QVBoxLayout(page);
         lay->setContentsMargins(0, 0, 0, 0);
         lay->setSpacing(2);
-        lay->addWidget(makeTitle(tr("Oscilloscope")));
-        m_propOscilloscopeCurves = makeLabel(tr("Curves: 0"));
+        lay->addWidget(makeTitle(tr("波形")));
+        m_propOscilloscopeCurves = makeLabel(tr("曲线数: 0"));
         lay->addWidget(m_propOscilloscopeCurves);
-        m_propOscilloscopeFPS = makeLabel(tr("Target FPS: 30"));
+        m_propOscilloscopeFPS = makeLabel(tr("目标帧率: 30"));
         lay->addWidget(m_propOscilloscopeFPS);
         lay->addStretch();
         m_propertyStack->addWidget(page); // index 1
@@ -392,8 +392,8 @@ void MainWindow::setupPropertyDock()
         QWidget *page = new QWidget();
         QVBoxLayout *lay = new QVBoxLayout(page);
         lay->setContentsMargins(0, 0, 0, 0);
-        lay->addWidget(makeTitle(tr("Automation")));
-        lay->addWidget(makeDimLabel(tr("No properties for Automation")));
+        lay->addWidget(makeTitle(tr("自动化")));
+        lay->addWidget(makeDimLabel(tr("自动化暂无属性")));
         lay->addStretch();
         m_propertyStack->addWidget(page); // index 2
     }
@@ -403,8 +403,8 @@ void MainWindow::setupPropertyDock()
         QWidget *page = new QWidget();
         QVBoxLayout *lay = new QVBoxLayout(page);
         lay->setContentsMargins(0, 0, 0, 0);
-        lay->addWidget(makeTitle(tr("Device")));
-        lay->addWidget(makeDimLabel(tr("No properties for Device")));
+        lay->addWidget(makeTitle(tr("设备")));
+        lay->addWidget(makeDimLabel(tr("设备暂无属性")));
         lay->addStretch();
         m_propertyStack->addWidget(page); // index 3
     }
@@ -415,8 +415,8 @@ void MainWindow::setupPropertyDock()
         QVBoxLayout *lay = new QVBoxLayout(page);
         lay->setContentsMargins(0, 0, 0, 0);
         lay->setSpacing(2);
-        lay->addWidget(makeTitle(tr("Settings")));
-        m_propSettingsParams = makeLabel(tr("Parameters: 0"));
+        lay->addWidget(makeTitle(tr("设置")));
+        m_propSettingsParams = makeLabel(tr("参数数量: 0"));
         lay->addWidget(m_propSettingsParams);
         lay->addStretch();
         m_propertyStack->addWidget(page); // index 4
@@ -428,7 +428,7 @@ void MainWindow::setupPropertyDock()
 
 void MainWindow::setupLogConsole()
 {
-    m_logDock = new QDockWidget(tr("Log Console"), this);
+    m_logDock = new QDockWidget(tr("日志控制台"), this);
     m_logDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     m_logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
 
@@ -441,7 +441,7 @@ void MainWindow::setupLogConsole()
     QHBoxLayout *toolbar = new QHBoxLayout();
     toolbar->setContentsMargins(4, 2, 4, 2);
 
-    m_logClearBtn = new QPushButton(tr("Clear"));
+    m_logClearBtn = new QPushButton(tr("清空"));
     m_logClearBtn->setFixedHeight(24);
     m_logClearBtn->setStyleSheet(
         "QPushButton { background: #FFFFFF; color: #424242; border: 1px solid #E0E0E0; "
@@ -449,7 +449,7 @@ void MainWindow::setupLogConsole()
         "QPushButton:hover { background: #F5F5F5; border-color: #2196F3; }"
     );
 
-    m_logAutoScrollBtn = new QPushButton(tr("Auto-scroll: ON"));
+    m_logAutoScrollBtn = new QPushButton(tr("自动滚动: 开"));
     m_logAutoScrollBtn->setCheckable(true);
     m_logAutoScrollBtn->setChecked(true);
     m_logAutoScrollBtn->setFixedHeight(24);
@@ -488,7 +488,7 @@ void MainWindow::setupLogConsole()
 
     // Connect Auto-scroll toggle
     connect(m_logAutoScrollBtn, &QPushButton::toggled, this, [this](bool checked) {
-        m_logAutoScrollBtn->setText(checked ? tr("Auto-scroll: ON") : tr("Auto-scroll: OFF"));
+        m_logAutoScrollBtn->setText(checked ? tr("自动滚动: 开") : tr("自动滚动: 关"));
     });
 }
 
@@ -720,7 +720,7 @@ void MainWindow::onFrameReady(const QVector<float>& values)
     frameCount++;
     if (timer.elapsed() >= 1000) {
         double fps = frameCount * 1000.0 / timer.elapsed();
-        m_dataRate->setText(QString(" Data: %1 fps ").arg(fps, 0, 'f', 0));
+        m_dataRate->setText(QString(" 数据: %1 fps ").arg(fps, 0, 'f', 0));
         frameCount = 0;
         timer.restart();
     }
@@ -728,29 +728,29 @@ void MainWindow::onFrameReady(const QVector<float>& values)
 
 void MainWindow::onDeviceConnected()
 {
-    m_connectionStatus->setText(tr(" Connected "));
+    m_connectionStatus->setText(tr(" 已连接 "));
     m_connectionStatus->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; }");
     m_connectBtn->setEnabled(false);
     m_disconnectBtn->setEnabled(true);
     m_portCombo->setEnabled(false);
     m_baudCombo->setEnabled(false);
-    statusBar()->showMessage(tr("Connected"), 5000);
+    statusBar()->showMessage(tr("已连接"), 5000);
 }
 
 void MainWindow::onDeviceDisconnected()
 {
-    m_connectionStatus->setText(tr(" Disconnected "));
+    m_connectionStatus->setText(tr(" 已断开 "));
     m_connectionStatus->setStyleSheet("QLabel { color: #F44336; font-weight: bold; }");
     m_connectBtn->setEnabled(true);
     m_disconnectBtn->setEnabled(false);
     m_portCombo->setEnabled(true);
     m_baudCombo->setEnabled(true);
-    statusBar()->showMessage(tr("Disconnected"), 3000);
+    statusBar()->showMessage(tr("已断开"), 3000);
 }
 
 void MainWindow::onDeviceError(const QString& message)
 {
-    statusBar()->showMessage(tr("Error: %1").arg(message), 10000);
+    statusBar()->showMessage(tr("错误: %1").arg(message), 10000);
 }
 
 // ============================================================
@@ -794,28 +794,28 @@ void MainWindow::removePage(int index)
 void MainWindow::onImportProject()
 {
     QString path = QFileDialog::getOpenFileName(
-        this, tr("Import Project File"), QString(),
-        tr("JSON Files (*.json);;All Files (*)"));
+        this, tr("导入工程文件"), QString(),
+        tr("JSON 文件 (*.json);;所有文件 (*)"));
     if (!path.isEmpty()) {
         emit projectImportRequested(path);
-        statusBar()->showMessage(tr("Project imported: %1").arg(path), 5000);
+        statusBar()->showMessage(tr("工程已导入: %1").arg(path), 5000);
     }
 }
 
 void MainWindow::onExportProject()
 {
     QString path = QFileDialog::getSaveFileName(
-        this, tr("Export Project File"), QString(),
-        tr("JSON Files (*.json);;All Files (*)"));
+        this, tr("导出工程文件"), QString(),
+        tr("JSON 文件 (*.json);;所有文件 (*)"));
     if (!path.isEmpty()) {
         emit projectExportRequested(path);
-        statusBar()->showMessage(tr("Project exported: %1").arg(path), 5000);
+        statusBar()->showMessage(tr("工程已导出: %1").arg(path), 5000);
     }
 }
 
 void MainWindow::onSettings()
 {
-    QMessageBox::information(this, tr("Preferences"), tr("Settings will be available in a future version."));
+    QMessageBox::information(this, tr("首选项"), tr("设置功能将在后续版本中提供。"));
 }
 
 void MainWindow::onChannelConfig()
@@ -828,20 +828,17 @@ void MainWindow::onChannelConfig()
         if (m_dashboardWidget) {
             m_dashboardWidget->subscribeToDataBus(10);
         }
-        statusBar()->showMessage(tr("Channel configuration updated"), 3000);
+        statusBar()->showMessage(tr("通道配置已更新"), 3000);
     }
 }
 
 void MainWindow::onAbout()
 {
     QString aboutText = QString(
-        "<h2>Motor Automation v0.1</h2>"
-        "<p>Industrial Motor Debug & Automation Test Platform</p>"
-        "<p>Tech: Qt5 / C++17 / qmake</p>"
-        "<p>Target: Windows</p>"
-        "<hr>"
-        "<p>Internal Tool — Not for Commercial Use</p>");
-    QMessageBox::about(this, tr("About Motor Automation"), aboutText);
+        "<h2>电机自动化平台 v0.1</h2>"
+        "<p>工业级电机调试与自动化测试平台</p>"
+        "<p>技术栈: Qt 5.14.2 / C++17</p>");
+    QMessageBox::about(this, tr("关于电机自动化平台"), aboutText);
 }
 
 void MainWindow::onConnect()
@@ -851,7 +848,7 @@ void MainWindow::onConnect()
         port = m_portCombo->currentText().split('(').first().trimmed();
     }
     if (port.isEmpty()) {
-        statusBar()->showMessage(tr("No port selected"), 3000);
+        statusBar()->showMessage(tr("未选择端口"), 3000);
         return;
     }
 
@@ -936,7 +933,7 @@ void MainWindow::createDefaultPages()
         // Fallback placeholder if setupAutomation failed
         QWidget *placeholder = new QWidget();
         QVBoxLayout *lay = new QVBoxLayout(placeholder);
-        QLabel *label = new QLabel(tr("Automation\n\nInitialization failed."));
+        QLabel *label = new QLabel(tr("自动化\n\n初始化失败。"));
         label->setAlignment(Qt::AlignCenter);
         label->setStyleSheet("color: #9E9E9E; font-size: 14px;");
         lay->addWidget(label);
@@ -957,7 +954,7 @@ void MainWindow::createDefaultPages()
         m_navList->setCurrentRow(0);
     }
 
-    MainWindow::log(tr("Application started — Industrial layout initialized"));
+    MainWindow::log(tr("应用程序已启动 — 工业布局已初始化"));
 }
 
 // ============================================================
@@ -973,16 +970,16 @@ void MainWindow::refreshPropertyPanel()
     switch (idx) {
     case 0: // Dashboard
         if (m_propDashboardChannels)
-            m_propDashboardChannels->setText(tr("Subscribed channels: %1").arg(m_topicIds.size()));
+            m_propDashboardChannels->setText(tr("订阅通道: %1").arg(m_topicIds.size()));
         break;
     case 1: // Oscilloscope
         if (m_propOscilloscopeCurves)
-            m_propOscilloscopeCurves->setText(tr("Curve widgets: %1").arg(
+            m_propOscilloscopeCurves->setText(tr("曲线窗口: %1").arg(
                 m_curveContainer ? m_curveContainer->curveWidgetCount() : 0));
         break;
     case 4: // Settings
         if (m_propSettingsParams && m_paramManager)
-            m_propSettingsParams->setText(tr("Parameters: %1").arg(m_paramManager->parameterCount()));
+            m_propSettingsParams->setText(tr("参数数量: %1").arg(m_paramManager->parameterCount()));
         break;
     default:
         break;
@@ -995,12 +992,12 @@ void MainWindow::refreshPropertyPanel()
 
 void MainWindow::onExportCSV()
 {
-    QString path = QFileDialog::getSaveFileName(this, tr("Export CSV"), QString(), tr("CSV (*.csv)"));
+    QString path = QFileDialog::getSaveFileName(this, tr("导出 CSV"), QString(), tr("CSV 文件 (*.csv)"));
     if (path.isEmpty()) return;
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        statusBar()->showMessage(tr("Cannot write file"), 5000);
+        statusBar()->showMessage(tr("无法写入文件"), 5000);
         return;
     }
 
@@ -1044,7 +1041,7 @@ void MainWindow::onExportCSV()
     }
 
     file.close();
-    statusBar()->showMessage(tr("CSV exported: %1").arg(path), 5000);
+    statusBar()->showMessage(tr("CSV 已导出: %1").arg(path), 5000);
 }
 
 // ============================================================
@@ -1053,7 +1050,7 @@ void MainWindow::onExportCSV()
 
 void MainWindow::onSaveProject()
 {
-    QString path = QFileDialog::getSaveFileName(this, tr("Save Project"), QString(), tr("JSON (*.json)"));
+    QString path = QFileDialog::getSaveFileName(this, tr("保存工程"), QString(), tr("JSON 文件 (*.json)"));
     if (path.isEmpty()) return;
 
     QJsonObject project;
@@ -1069,18 +1066,18 @@ void MainWindow::onSaveProject()
         QJsonDocument doc(project);
         file.write(doc.toJson(QJsonDocument::Indented));
         file.close();
-        statusBar()->showMessage(tr("Project saved: %1").arg(path), 5000);
+        statusBar()->showMessage(tr("工程已保存: %1").arg(path), 5000);
     }
 }
 
 void MainWindow::onLoadProject()
 {
-    QString path = QFileDialog::getOpenFileName(this, tr("Open Project"), QString(), tr("JSON (*.json)"));
+    QString path = QFileDialog::getOpenFileName(this, tr("打开工程"), QString(), tr("JSON 文件 (*.json)"));
     if (path.isEmpty()) return;
 
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        statusBar()->showMessage(tr("Cannot open file"), 5000);
+        statusBar()->showMessage(tr("无法打开文件"), 5000);
         return;
     }
 
@@ -1095,7 +1092,7 @@ void MainWindow::onLoadProject()
         m_paramWidget->refresh();
     }
 
-    statusBar()->showMessage(tr("Project loaded: %1").arg(path), 5000);
+    statusBar()->showMessage(tr("工程已加载: %1").arg(path), 5000);
 }
 
 // ============================================================
@@ -1104,7 +1101,7 @@ void MainWindow::onLoadProject()
 
 void MainWindow::setupDynamicWidgetDock()
 {
-    m_dynamicWidgetDock = new QDockWidget(tr("Dynamic Widgets"), this);
+    m_dynamicWidgetDock = new QDockWidget(tr("动态控件"), this);
     m_dynamicWidgetDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     m_dynamicWidgetDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     m_dynamicWidgetDock->setMinimumWidth(200);
@@ -1116,7 +1113,7 @@ void MainWindow::setupDynamicWidgetDock()
     m_dynamicWidgetLayout->setSpacing(6);
 
     // Title label
-    QLabel *title = new QLabel(tr("Interactive Controls"));
+    QLabel *title = new QLabel(tr("交互控件"));
     title->setStyleSheet(
         "color: #1976D2; font-size: 13px; font-weight: bold;"
         "padding: 8px; border-bottom: 1px solid #E0E0E0;"
@@ -1124,7 +1121,7 @@ void MainWindow::setupDynamicWidgetDock()
     m_dynamicWidgetLayout->addWidget(title);
 
     // Hint when no widgets exist
-    QLabel *hint = new QLabel(tr("Click [+] in toolbar\nto add a widget"));
+    QLabel *hint = new QLabel(tr("点击工具栏 [+] \n添加控件"));
     hint->setAlignment(Qt::AlignCenter);
     hint->setWordWrap(true);
     hint->setStyleSheet("color: #9E9E9E; font-size: 11px; padding: 12px;");
@@ -1149,7 +1146,7 @@ void MainWindow::onAddDynamicWidget()
 
     // ---- Creation dialog ----
     QDialog dlg(this);
-    dlg.setWindowTitle(tr("Add Dynamic Widget"));
+    dlg.setWindowTitle(tr("添加动态控件"));
     dlg.setMinimumWidth(360);
     dlg.setStyleSheet(
         "QDialog { background-color: #FFFFFF; }"
@@ -1160,9 +1157,9 @@ void MainWindow::onAddDynamicWidget()
     dlgLayout->setSpacing(8);
 
     // Type
-    dlgLayout->addWidget(new QLabel(tr("Widget Type:")));
+    dlgLayout->addWidget(new QLabel(tr("控件类型:")));
     QComboBox *typeCombo = new QComboBox();
-    typeCombo->addItems({tr("Button"), tr("Slider"), tr("Input")});
+    typeCombo->addItems({tr("按钮"), tr("滑块"), tr("输入框")});
     typeCombo->setStyleSheet(
         "QComboBox { background: #FFFFFF; color: #424242; border: 1px solid #E0E0E0;"
         "  border-radius: 3px; padding: 4px 8px; }"
@@ -1173,9 +1170,9 @@ void MainWindow::onAddDynamicWidget()
     dlgLayout->addWidget(typeCombo);
 
     // Label
-    dlgLayout->addWidget(new QLabel(tr("Label:")));
+    dlgLayout->addWidget(new QLabel(tr("标签:")));
     QLineEdit *labelEdit = new QLineEdit();
-    labelEdit->setPlaceholderText(tr("e.g., Start Motor"));
+    labelEdit->setPlaceholderText(tr("例如: 启动电机"));
     labelEdit->setStyleSheet(
         "QLineEdit { background: #FAFAFA; color: #424242; border: 1px solid #E0E0E0;"
         "  border-radius: 3px; padding: 4px 8px; }"
@@ -1184,9 +1181,9 @@ void MainWindow::onAddDynamicWidget()
     dlgLayout->addWidget(labelEdit);
 
     // Command
-    dlgLayout->addWidget(new QLabel(tr("Binding Command ({value} = widget value):")));
+    dlgLayout->addWidget(new QLabel(tr("绑定命令 ({value} = 控件值):")));
     QLineEdit *cmdEdit = new QLineEdit();
-    cmdEdit->setPlaceholderText(tr("e.g., Set Speed {value}"));
+    cmdEdit->setPlaceholderText(tr("例如: 设置转速 {value}"));
     cmdEdit->setStyleSheet(labelEdit->styleSheet());
     dlgLayout->addWidget(cmdEdit);
 
@@ -1206,7 +1203,7 @@ void MainWindow::onAddDynamicWidget()
 
     QString label = labelEdit->text().trimmed();
     if (label.isEmpty()) {
-        QMessageBox::warning(this, tr("Missing Label"), tr("Please enter a label for the widget."));
+        QMessageBox::warning(this, tr("缺少标签"), tr("请输入控件标签。"));
         return;
     }
 
@@ -1275,8 +1272,8 @@ void MainWindow::onDynamicWidgetContextMenu(const QPoint &pos)
         "QMenu::item:selected { background-color: #2196F3; }"
     );
 
-    QAction *editAction = menu.addAction(tr("Edit Binding"));
-    QAction *deleteAction = menu.addAction(tr("Delete"));
+    QAction *editAction = menu.addAction(tr("编辑绑定"));
+    QAction *deleteAction = menu.addAction(tr("删除"));
 
     QAction *chosen = menu.exec(widget->mapToGlobal(pos));
     if (!chosen) return;
@@ -1285,8 +1282,8 @@ void MainWindow::onDynamicWidgetContextMenu(const QPoint &pos)
         // Show edit dialog
         bool ok = false;
         QString current = m_widgetBindingManager->command(widget);
-        QString newCmd = QInputDialog::getText(this, tr("Edit Binding"),
-            tr("Command (use {value} for widget value):"),
+        QString newCmd = QInputDialog::getText(this, tr("编辑绑定"),
+            tr("命令 ({value} 表示控件值):"),
             QLineEdit::Normal, current, &ok);
         if (ok && !newCmd.trimmed().isEmpty()) {
             m_widgetBindingManager->bind(widget, newCmd.trimmed());
@@ -1320,7 +1317,7 @@ void MainWindow::onDynamicWidgetContextMenu(const QPoint &pos)
         }
 
         if (!hasRows) {
-            QLabel *hint = new QLabel(tr("Click [+] in toolbar\nto add a widget"));
+            QLabel *hint = new QLabel(tr("点击工具栏 [+] \n添加控件"));
             hint->setAlignment(Qt::AlignCenter);
             hint->setWordWrap(true);
             hint->setStyleSheet("color: #9E9E9E; font-size: 11px; padding: 12px;");
