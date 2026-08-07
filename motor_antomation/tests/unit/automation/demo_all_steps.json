@@ -1,0 +1,121 @@
+{
+  "name": "电机综合测试示例",
+  "description": "演示所有8种步骤类型的完整自动化测试用例 — 用于学习和参考",
+  "stopOnFailure": false,
+  "steps": [
+    {
+      "type": "SetParameter",
+      "description": "【步骤1】设置目标转速为 1500 RPM",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "Speed": "1500"
+      }
+    },
+    {
+      "type": "SetParameter",
+      "description": "【步骤2】设置多个参数：电流限制、加速度",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "CurrentLimit": "5.0",
+        "Acceleration": "500"
+      }
+    },
+    {
+      "type": "StartMotor",
+      "description": "【步骤3】启动电机",
+      "timeoutMs": 5000,
+      "retryCount": 0,
+      "params": {}
+    },
+    {
+      "type": "Wait",
+      "description": "【步骤4】等待电机达到目标转速",
+      "timeoutMs": 6000,
+      "retryCount": 0,
+      "params": {
+        "durationMs": "2000"
+      }
+    },
+    {
+      "type": "ReadParameter",
+      "description": "【步骤5】读取当前转速",
+      "timeoutMs": 1000,
+      "retryCount": 0,
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "type": "Assert",
+      "description": "【步骤6】断言：转速应在 1000~2000 RPM 范围内",
+      "timeoutMs": 2000,
+      "retryCount": 1,
+      "params": {
+        "channel": "Speed",
+        "min": "1000",
+        "max": "2000"
+      }
+    },
+    {
+      "type": "RecordData",
+      "description": "【步骤7】记录当前所有通道数据快照",
+      "timeoutMs": 1000,
+      "retryCount": 0,
+      "params": {}
+    },
+    {
+      "type": "Assert",
+      "description": "【步骤8】断言：电流应不超过上限 10A（只设上限）",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "channel": "Ia",
+        "max": "10.0"
+      }
+    },
+    {
+      "type": "SetParameter",
+      "description": "【步骤9】将转速降为 0",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "Speed": "0"
+      }
+    },
+    {
+      "type": "Wait",
+      "description": "【步骤10】等待电机减速",
+      "timeoutMs": 5000,
+      "retryCount": 0,
+      "params": {
+        "durationMs": "3000"
+      }
+    },
+    {
+      "type": "Assert",
+      "description": "【步骤11】断言：转速接近零（只设上限）",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "channel": "Speed",
+        "max": "100"
+      }
+    },
+    {
+      "type": "StopMotor",
+      "description": "【步骤12】停止电机",
+      "timeoutMs": 5000,
+      "retryCount": 0,
+      "params": {}
+    },
+    {
+      "type": "RecordData",
+      "description": "【步骤13】停机后记录最终数据快照",
+      "timeoutMs": 1000,
+      "retryCount": 0,
+      "params": {}
+    }
+  ]
+}
