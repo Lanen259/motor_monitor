@@ -1,5 +1,6 @@
 #include "VerticalPlotList.h"
 #include "PlotCell.h"
+#include "CurveWidget.h"
 #include "../curve/CurveEngine.h"
 #include "../curve/TimeAxisManager.h"
 

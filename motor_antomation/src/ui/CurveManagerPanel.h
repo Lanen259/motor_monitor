@@ -4,6 +4,7 @@
 #include <QTableWidget>
 #include <QComboBox>
 #include <QPushButton>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QCheckBox>
 #include <QVector>

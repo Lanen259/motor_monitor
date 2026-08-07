@@ -12,6 +12,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include "automation/FlowGraph.h"
 
 namespace MotorStudio {
 
@@ -25,7 +26,6 @@ class FlowCanvas;
 class NodeLibraryPanel;
 class NodeParamPanel;
 class FlowRunner;
-struct FlowGraph;
 struct FlowRunResult;
 
 // Status per step for coloring the table rows

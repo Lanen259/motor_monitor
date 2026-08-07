@@ -49,6 +49,13 @@ public:
 
     bool isPortHit(const QPointF& scenePos, PortType* outPort = nullptr) const;
 
+    // Node geometry (used by FlowCanvas for placement)
+    static constexpr int NODE_WIDTH  = 160;
+    static constexpr int NODE_HEIGHT = 56;
+    static constexpr int STRIPE_WIDTH = 4;
+    static constexpr int PORT_RADIUS = 5;
+    static constexpr int CORNER_RADIUS = 6;
+
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
@@ -62,12 +69,6 @@ private:
 
     FlowNode m_node;
     bool m_highlighted = false;
-
-    static constexpr int NODE_WIDTH  = 160;
-    static constexpr int NODE_HEIGHT = 56;
-    static constexpr int STRIPE_WIDTH = 4;
-    static constexpr int PORT_RADIUS = 5;
-    static constexpr int CORNER_RADIUS = 6;
 };
 
 // ============================================================

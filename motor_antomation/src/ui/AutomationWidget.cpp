@@ -14,6 +14,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QJsonDocument>
 #include <QThread>
 #include <QDebug>
 #include <sstream>
