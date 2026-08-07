@@ -605,20 +605,43 @@ void CurveWidget::wheelEvent(QWheelEvent* event)
 
     update();
     notifyTimeAxisChange();
+
+    // 关键：接受滚轮事件，阻止其继续冒泡到 QScrollArea 触发区域滚动
+    // 从而实现"鼠标在哪个图就缩放哪个图"，滚轮不再滚动整个区域
+    event->accept();
+}
+
+void CurveWidget::setRubberBandEnabled(bool enabled)
+{
+    m_rubberBandEnabled = enabled;
+    if (!enabled) {
+        // 退出框选模式：取消进行中的框选，恢复光标
+        m_rubberBanding = false;
+        m_rubberBandRect = QRect();
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
 }
 
 void CurveWidget::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
-        // WI-104: 左键框选缩放
-        m_rubberBanding = true;
-        m_rubberBandOrigin = event->pos();
-        m_rubberBandRect = QRect(event->pos(), QSize(0, 0));
-        setCursor(Qt::CrossCursor);
+        if (m_rubberBandEnabled) {
+            // 框选模式：左键拖拽框选缩放
+            m_rubberBanding = true;
+            m_rubberBandOrigin = event->pos();
+            m_rubberBandRect = QRect(event->pos(), QSize(0, 0));
+            setCursor(Qt::CrossCursor);
+            event->accept();
+        } else {
+            // 非框选模式：左键让给滚动区域的拖拽滚动，忽略并向上冒泡
+            event->ignore();
+        }
     } else if (event->button() == Qt::RightButton) {
         m_panning = true;
         m_lastMousePos = event->pos();
         setCursor(Qt::ClosedHandCursor);
+        event->accept();
     }
 }
 
@@ -631,10 +654,15 @@ void CurveWidget::mouseMoveEvent(QMouseEvent* event)
         m_t0 = (m_t0 > dt * 1000000.0) ? static_cast<uint64_t>(m_t0 - dt * 1000000.0) : 0;
         update();
         notifyTimeAxisChange();
+        event->accept();
     } else if (m_rubberBanding) {
         // WI-104: 更新框选矩形
         m_rubberBandRect = QRect(m_rubberBandOrigin, event->pos()).normalized();
         update();
+        event->accept();
+    } else {
+        // 无框选/平移状态：忽略，让事件冒泡到滚动区域（拖拽滚动）
+        event->ignore();
     }
 }
 
@@ -667,10 +695,16 @@ void CurveWidget::mouseReleaseEvent(QMouseEvent* event)
 
             update();
             notifyTimeAxisChange();
+            event->accept();
         }
     } else if (event->button() == Qt::RightButton) {
         m_panning = false;
         setCursor(Qt::ArrowCursor);
+        event->accept();
+    } else {
+        // 未处理的释放事件（如非框选模式下的左键释放）向上冒泡，
+        // 供滚动区域的拖拽滚动逻辑复位待命状态
+        event->ignore();
     }
 }
 

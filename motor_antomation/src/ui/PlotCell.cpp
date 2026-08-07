@@ -30,6 +30,7 @@ protected:
             m_dragging = true;
             m_dragStartY = event->globalY();
             m_dragStartHeight = m_cell->height();
+            event->accept();  // 阻止冒泡，避免同时触发区域拖拽滚动
         }
     }
     void mouseMoveEvent(QMouseEvent* event) override {
@@ -40,12 +41,14 @@ protected:
             if (newH > 800) newH = 800;   // maximum height
             m_cell->setPreferredHeight(newH);
             m_cell->setFixedHeight(newH);
+            event->accept();
         }
     }
     void mouseReleaseEvent(QMouseEvent* event) override {
         if (event->button() == Qt::LeftButton && m_dragging) {
             m_dragging = false;
             m_cell->setPreferredHeight(m_cell->height());
+            event->accept();
         }
     }
     void paintEvent(QPaintEvent*) override {

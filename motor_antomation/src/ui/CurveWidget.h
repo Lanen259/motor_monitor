@@ -42,6 +42,11 @@ public:
     void setChannelTopicId(int index, uint32_t topicId);
     void setAutoPopulateChannels(bool enabled);
 
+    // Rubber-band zoom mode (WI-104/WI-105): when disabled (default), left-drag
+    // is reserved for the scroll area's drag-scrolling.
+    void setRubberBandEnabled(bool enabled);
+    bool rubberBandEnabled() const { return m_rubberBandEnabled; }
+
     // Display control
     void setYAxisLabel(const QString& label) { m_yAxisLabel = label; }
     void setXAxisLabel(const QString& label) { m_xAxisLabel = label; }
@@ -141,6 +146,7 @@ private:
 
     // Rubber-band zoom (WI-104)
     bool m_rubberBanding = false;
+    bool m_rubberBandEnabled = false;  // true = left-drag does rubber-band zoom
     QPoint m_rubberBandOrigin;
     QRect m_rubberBandRect;
 

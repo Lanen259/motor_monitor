@@ -6,6 +6,10 @@
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QEvent>
+#include <QWheelEvent>
+#include <QMouseEvent>
+#include <QScrollBar>
 
 namespace MotorStudio {
 
@@ -19,6 +23,11 @@ VerticalPlotList::VerticalPlotList(CurveEngine* engine, QWidget* parent)
 {
     setupUi();
     setupToolbar();
+
+    // 安装 viewport 事件过滤器：
+    //  - 吞掉 Wheel，使整个区域不再随滚轮滚动（滚轮只用于子图内缩放）
+    //  - 非框选模式下左键拖拽滚动整个区域
+    viewport()->installEventFilter(this);
 
     // No default plot added here — the caller (mainwindow) does it.
 }
@@ -93,6 +102,32 @@ void VerticalPlotList::setupToolbar()
 
     layout->addStretch();
 
+    // 框选缩放模式开关：开启后左键在图上拖拽框选放大；
+    // 关闭时（默认）左键拖拽用于滚动整个区域
+    m_rubberBandBtn = new QPushButton(tr("框选"));
+    m_rubberBandBtn->setCheckable(true);
+    m_rubberBandBtn->setFixedHeight(28);
+    m_rubberBandBtn->setFixedWidth(52);
+    m_rubberBandBtn->setCursor(Qt::PointingHandCursor);
+    m_rubberBandBtn->setToolTip(tr("框选缩放模式：开启后左键在图上拖拽框选放大；关闭时左键拖拽滚动整个区域"));
+    m_rubberBandBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #FFFFFF; color: #1976D2;"
+        "  border: 1px solid #90CAF9; border-radius: 4px;"
+        "  font-size: 12px; font-weight: bold;"
+        "  font-family: 'Microsoft YaHei';"
+        "}"
+        "QPushButton:hover { background-color: #E3F2FD; }"
+        "QPushButton:checked {"
+        "  background-color: #2196F3; color: #FFFFFF;"
+        "  border: none;"
+        "}"
+        "QPushButton:checked:hover { background-color: #42A5F5; }"
+    );
+    connect(m_rubberBandBtn, &QPushButton::toggled,
+            this, &VerticalPlotList::onRubberBandToggled);
+    layout->addWidget(m_rubberBandBtn);
+
     m_addPlotBtn = new QPushButton(tr("+ 新增子图"));
     m_addPlotBtn->setFixedHeight(28);
     m_addPlotBtn->setFixedWidth(90);
@@ -148,6 +183,9 @@ int VerticalPlotList::addPlot(const QString& name)
     // Set the initial TimeAxisManager on the PlotCell's CurveWidget
     cell->curveWidget()->setTimeAxisManager(&taMgr);
 
+    // 应用当前框选模式到新子图
+    cell->curveWidget()->setRubberBandEnabled(m_rubberBandMode);
+
     emit plotCountChanged(m_plotWidgets.size());
     return m_plotWidgets.size() - 1;
 }
@@ -192,6 +230,89 @@ void VerticalPlotList::onAddPlotClicked()
 void VerticalPlotList::onClosePlot(int index)
 {
     removePlot(index);
+}
+
+void VerticalPlotList::onRubberBandToggled(bool checked)
+{
+    m_rubberBandMode = checked;
+    applyRubberBandMode();
+}
+
+void VerticalPlotList::applyRubberBandMode()
+{
+    for (PlotCell* cell : m_plotWidgets) {
+        cell->curveWidget()->setRubberBandEnabled(m_rubberBandMode);
+    }
+}
+
+// ============================================================
+// Viewport event filter (WI-105: 解耦滚轮滚动与子图缩放)
+// ============================================================
+
+bool VerticalPlotList::eventFilter(QObject* obj, QEvent* event)
+{
+    if (obj != viewport()) {
+        return QScrollArea::eventFilter(obj, event);
+    }
+
+    switch (event->type()) {
+    case QEvent::Wheel:
+        // 整个区域禁用滚轮滚动：滚轮事件由子图 CurveWidget 自己 accept，
+        // 未被子图处理的滚轮（头部/空白处）在这里被吞掉，不再滚动区域
+        return true;
+
+    case QEvent::MouseButtonPress: {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (me->button() == Qt::LeftButton && !m_rubberBandMode) {
+            // 非框选模式：记录按下位置，待移动超过阈值后才真正开始拖拽滚动。
+            // 这里不 grabMouse 也不吞掉事件，保证单击/双击（如双击自适应）不受影响。
+            m_dragArmed = true;
+            m_dragArmPos = me->globalPos();
+            m_dragStartScrollValue = verticalScrollBar()->value();
+        }
+        return false;
+    }
+
+    case QEvent::MouseMove: {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (m_dragScrolling) {
+            int dy = me->globalPos().y() - m_dragArmPos.y();
+            verticalScrollBar()->setValue(m_dragStartScrollValue - dy);
+            return true;
+        }
+        if (m_dragArmed && (me->buttons() & Qt::LeftButton)) {
+            // 移动超过阈值才进入拖拽滚动，避免误吞单击/双击
+            if (qAbs(me->globalPos().y() - m_dragArmPos.y()) > 4) {
+                m_dragScrolling = true;
+                viewport()->setCursor(Qt::ClosedHandCursor);
+                viewport()->grabMouse();  // 确保 move/release 持续送达
+                verticalScrollBar()->setValue(
+                    m_dragStartScrollValue - (me->globalPos().y() - m_dragArmPos.y()));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    case QEvent::MouseButtonRelease: {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (me->button() == Qt::LeftButton && m_dragScrolling) {
+            m_dragScrolling = false;
+            m_dragArmed = false;
+            viewport()->releaseMouse();
+            viewport()->unsetCursor();
+            return true;
+        }
+        if (me->button() == Qt::LeftButton && m_dragArmed) {
+            // 按下后未发生拖拽：视为普通点击，复位待命状态
+            m_dragArmed = false;
+        }
+        return false;
+    }
+
+    default:
+        return false;
+    }
 }
 
 } // namespace MotorStudio

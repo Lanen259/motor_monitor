@@ -41,17 +41,32 @@ public:
 signals:
     void plotCountChanged(int count);
 
+protected:
+    // Viewport event filter: swallows wheel (no area scroll on wheel),
+    // and implements left-drag scrolling of the whole area.
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private slots:
     void onAddPlotClicked();
     void onClosePlot(int index);
+    void onRubberBandToggled(bool checked);
 
 private:
     void setupUi();
     void setupToolbar();
+    void applyRubberBandMode();
 
     // Toolbar
     QWidget*     m_toolbarWidget = nullptr;
     QPushButton* m_addPlotBtn    = nullptr;
+    QPushButton* m_rubberBandBtn = nullptr;
+
+    // Interaction state
+    bool m_rubberBandMode   = false;  // toolbar toggle: left-drag = rubber-band zoom
+    bool m_dragArmed        = false;  // left pressed, waiting to exceed drag threshold
+    bool m_dragScrolling    = false;  // actively drag-scrolling the whole area
+    QPoint m_dragArmPos;              // global pos of left press (drag arm point)
+    int  m_dragStartScrollValue = 0;
 
     // Content area
     QWidget*     m_contentWidget = nullptr;
