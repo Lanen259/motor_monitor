@@ -1,4 +1,5 @@
 #include "CurveWidget.h"
+#include "../curve/CurveEngine.h"
 #include <QPainter>
 #include <QPaintEvent>
 #include <QWheelEvent>
@@ -22,7 +23,7 @@ CurveWidget::CurveWidget(QWidget* parent)
 {
     setMouseTracking(true);
     setMinimumSize(200, 150);
-    setStyleSheet("background-color: #1a1a2e;");
+    setStyleSheet("background-color: #F5F7FA;");
 }
 
 int CurveWidget::addChannel(const QString& name, const QColor& color)
@@ -60,10 +61,9 @@ void CurveWidget::pushData(int channelIndex, float value, uint64_t timestampUs)
         m_t0 = timestampUs;
     }
 
-    double t = (timestampUs - m_t0) / 1000000.0;  // 转换为秒
+    double t = (timestampUs - m_t0) / 1000000.0;
     m_channels[channelIndex].data.append(QPointF(t, value));
 
-    // 更新通道范围
     auto& ch = m_channels[channelIndex];
     if (ch.data.size() == 1) {
         ch.minVal = ch.maxVal = value;
@@ -87,7 +87,88 @@ void CurveWidget::pushFrame(const QVector<float>& values, uint64_t timestampUs)
         pushData(i, values[i], timestampUs);
     }
 
-    update();  // 触发重绘
+    update();
+}
+
+// ============================================================
+// CurveEngine-backed pull mode (P0 target architecture)
+// ============================================================
+
+void CurveWidget::attachCurveEngine(CurveEngine* engine, int fps)
+{
+    m_curveEngine = engine;
+    if (!m_pullTimer) {
+        m_pullTimer = new QTimer(this);
+        connect(m_pullTimer, &QTimer::timeout, this, &CurveWidget::onPullTimer);
+    }
+    m_pullTimer->start(1000 / fps);
+}
+
+void CurveWidget::detachCurveEngine()
+{
+    if (m_pullTimer) {
+        m_pullTimer->stop();
+    }
+    m_curveEngine = nullptr;
+}
+
+void CurveWidget::onPullTimer()
+{
+    if (!m_curveEngine) return;
+
+    auto ids = m_curveEngine->channelIds();
+    if (ids.empty()) return;
+
+    auto& registry = TopicRegistry::instance();
+
+    // Sync channels: create if new CurveEngine channels appear
+    while (static_cast<size_t>(m_channels.size()) < ids.size()) {
+        int idx = m_channels.size();
+        uint32_t tid = ids[idx];
+
+        ChannelDescriptor desc = registry.descriptor(tid);
+        QString name = QString::fromStdString(desc.name);
+        if (name.isEmpty()) {
+            name = QString("CH%1").arg(tid);
+        }
+
+        QColor color = Qt::cyan;
+        if (desc.color != 0 && desc.color != 0xFF888888) {
+            color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
+                           desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+        }
+
+        addChannel(name, color);
+        m_channels[idx].topicId = tid;
+    }
+
+    // Sync existing channel names and colors from registry (WI-005: dynamic update)
+    for (size_t i = 0; i < ids.size() && i < static_cast<size_t>(m_channels.size()); ++i) {
+        uint32_t tid = ids[i];
+        auto& localCh = m_channels[i];
+
+        ChannelDescriptor desc = registry.descriptor(tid);
+        if (!desc.name.empty()) {
+            localCh.name = QString::fromStdString(desc.name);
+        }
+        if (desc.color != 0 && desc.color != 0xFF888888) {
+            localCh.color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
+                                    desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+        }
+    }
+
+    // Pull min/max from CurveEngine channels for auto-scale
+    for (size_t i = 0; i < ids.size() && i < static_cast<size_t>(m_channels.size()); ++i) {
+        uint32_t tid = ids[i];
+        auto* ch = m_curveEngine->channel(tid);
+        if (!ch) continue;
+
+        auto range = ch->dataRange();
+        m_channels[i].minVal = range.minVal;
+        m_channels[i].maxVal = range.maxVal;
+    }
+
+    update();
 }
 
 void CurveWidget::setYRange(float min, float max)
@@ -109,12 +190,50 @@ void CurveWidget::setChannelColor(int index, const QColor& color)
     }
 }
 
+void CurveWidget::setTimeBase(uint64_t t0)
+{
+    m_t0 = t0;
+    update();
+}
+
 QColor CurveWidget::channelColor(int index) const
 {
     if (index >= 0 && index < m_channels.size()) {
         return m_channels[index].color;
     }
     return Qt::white;
+}
+
+QString CurveWidget::channelName(int index) const
+{
+    if (index >= 0 && index < m_channels.size()) {
+        return m_channels[index].name;
+    }
+    return QString();
+}
+
+void CurveWidget::setChannelVisible(int index, bool visible)
+{
+    if (index >= 0 && index < m_channels.size()) {
+        m_channels[index].visible = visible;
+        update();
+    }
+}
+
+bool CurveWidget::isChannelVisible(int index) const
+{
+    if (index >= 0 && index < m_channels.size()) {
+        return m_channels[index].visible;
+    }
+    return false;
+}
+
+uint32_t CurveWidget::channelTopicId(int index) const
+{
+    if (index >= 0 && index < m_channels.size()) {
+        return m_channels[index].topicId;
+    }
+    return 0;
 }
 
 void CurveWidget::clearData()
@@ -134,11 +253,18 @@ void CurveWidget::saveScreenshot(const QString& filePath)
 }
 
 // ============================================================
-// 绘制
+// Paint
 // ============================================================
 
 void CurveWidget::paintEvent(QPaintEvent* /*event*/)
 {
+    // WI-010: Frame timing measurement
+    if (!m_frameTimer.isValid()) {
+        m_frameTimer.start();
+    } else {
+        m_frameIntervalMs = m_frameTimer.restart();
+    }
+
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
@@ -152,24 +278,21 @@ void CurveWidget::paintEvent(QPaintEvent* /*event*/)
 
 void CurveWidget::drawGrid(QPainter& painter, const QRect& rect)
 {
-    painter.setPen(QPen(QColor(50, 50, 70), 1, Qt::DashLine));
+    painter.setPen(QPen(QColor(220, 220, 230), 1, Qt::DashLine));
 
-    // 水平网格线
     int hLines = 5;
     for (int i = 0; i <= hLines; ++i) {
         int y = rect.top() + rect.height() * i / hLines;
         painter.drawLine(rect.left(), y, rect.right(), y);
     }
 
-    // 垂直网格线
     int vLines = 5;
     for (int i = 0; i <= vLines; ++i) {
         int x = rect.left() + rect.width() * i / vLines;
         painter.drawLine(x, rect.top(), x, rect.bottom());
     }
 
-    // 边框
-    painter.setPen(QPen(QColor(80, 80, 100), 1));
+    painter.setPen(QPen(QColor(200, 200, 210), 1));
     painter.drawRect(rect);
 }
 
@@ -181,34 +304,55 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
 
     for (int ci = 0; ci < m_channels.size(); ++ci) {
         const auto& ch = m_channels[ci];
-        if (!ch.visible || ch.data.isEmpty()) continue;
+        if (!ch.visible) continue;
 
         QPen pen(ch.color, 1.5);
         painter.setPen(pen);
 
-        int totalPoints = ch.data.size();
-        if (totalPoints == 0) continue;
+        // WI-010: CurveEngine-backed mode → LTTB downsample targeting pixel width
+        if (m_curveEngine && ch.topicId != 0) {
+            auto* ceCh = m_curveEngine->channel(ch.topicId);
+            if (!ceCh || ceCh->count() == 0) continue;
 
-        // 降采样：如果数据点超过最大绘制点数，均匀采样
-        int step = std::max(1, totalPoints / kMaxDrawPoints);
+            // Initialize time base from data
+            if (m_t0 == 0) {
+                auto range = ceCh->dataRange();
+                m_t0 = range.minTime;
+            }
+
+            // LTTB downsample to pixel width (avoids rendering invisible detail)
+            size_t targetPts = static_cast<size_t>(std::max(2, rect.width()));
+            auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+            if (downsampled.size() < 2) continue;
+
+            QPointF prev;
+            bool first = true;
+            for (const auto& p : downsampled) {
+                double t = (p.first - m_t0) / 1000000.0;
+                QPointF pixel = dataToPixel(QPointF(t, p.second), rect);
+                if (first) {
+                    first = false;
+                } else {
+                    painter.drawLine(prev, pixel);
+                }
+                prev = pixel;
+            }
+            continue;
+        }
+
+        // Legacy push mode: render all local data points
+        if (ch.data.isEmpty()) continue;
 
         QPointF prev;
         bool first = true;
-
-        for (int i = 0; i < totalPoints; i += step) {
-            QPointF pixel = dataToPixel(ch.data[i], rect);
+        for (const auto& pt : ch.data) {
+            QPointF pixel = dataToPixel(pt, rect);
             if (first) {
                 first = false;
             } else {
                 painter.drawLine(prev, pixel);
             }
             prev = pixel;
-        }
-
-        // 确保最后一个点被绘制
-        if (totalPoints > 1 && (totalPoints - 1) % step != 0) {
-            QPointF lastPixel = dataToPixel(ch.data.last(), rect);
-            painter.drawLine(prev, lastPixel);
         }
     }
 }
@@ -224,16 +368,26 @@ void CurveWidget::drawLegend(QPainter& painter)
         const auto& ch = m_channels[i];
         if (!ch.visible) continue;
 
-        // 颜色块
         painter.fillRect(x, y, 12, 12, ch.color);
-        painter.setPen(Qt::white);
+        painter.setPen(QColor("#212121"));
 
-        // 通道名 + 最新值
-        float latest = ch.data.isEmpty() ? 0.0f : ch.data.last().y();
+        float latest = 0.0f;
+        if (!ch.data.isEmpty()) {
+            latest = ch.data.last().y();
+        } else if (m_curveEngine && ch.topicId != 0) {
+            // CurveEngine mode: get latest value from engine
+            auto* ceCh = m_curveEngine->channel(ch.topicId);
+            if (ceCh && ceCh->count() > 0) {
+                auto recent = ceCh->recentPoints(1);
+                if (!recent.empty()) {
+                    latest = recent[0].second;
+                }
+            }
+        }
         QString text = QString("%1: %2").arg(ch.name).arg(latest, 6, 'f', 2);
         painter.drawText(x + 16, y + 10, text);
 
-        x += 16 + painter.fontMetrics().width(text) + 20;
+        x += 16 + painter.fontMetrics().horizontalAdvance(text) + 20;
         if (x > rect().right() - 100) {
             x = rect().left() + 70;
             y += 16;
@@ -243,10 +397,9 @@ void CurveWidget::drawLegend(QPainter& painter)
 
 void CurveWidget::drawAxisLabels(QPainter& painter, const QRect& rect)
 {
-    painter.setPen(QColor(150, 150, 170));
+    painter.setPen(QColor(100, 100, 110));
     painter.setFont(QFont("Consolas", 8));
 
-    // Y轴标签
     float range = m_yMax - m_yMin;
     if (range <= 0) range = 1;
     int hLines = 5;
@@ -257,7 +410,6 @@ void CurveWidget::drawAxisLabels(QPainter& painter, const QRect& rect)
         painter.drawText(rect.left() - 55, y + 4, 50, 12, Qt::AlignRight | Qt::AlignVCenter, label);
     }
 
-    // X轴标签
     int vLines = 5;
     for (int i = 0; i <= vLines; ++i) {
         double t = m_xRangeSeconds * i / vLines;
@@ -307,7 +459,7 @@ QPointF CurveWidget::pixelToData(const QPointF& pixel, const QRect& rect) const
 }
 
 // ============================================================
-// 鼠标交互
+// Mouse interaction
 // ============================================================
 
 void CurveWidget::resizeEvent(QResizeEvent* /*event*/)
@@ -318,8 +470,22 @@ void CurveWidget::resizeEvent(QResizeEvent* /*event*/)
 void CurveWidget::wheelEvent(QWheelEvent* event)
 {
     double factor = (event->angleDelta().y() > 0) ? 0.9 : 1.1;
-    m_xRangeSeconds = std::max(0.5, m_xRangeSeconds * factor);
+
+    if (event->modifiers() & Qt::ControlModifier) {
+        // Ctrl+Wheel: Y-axis value zoom (scale around cursor position)
+        float yCenter = m_yMax - (float)event->pos().y() / height() * (m_yMax - m_yMin);
+        float newRange = (m_yMax - m_yMin) * factor;
+        float halfRange = newRange / 2.0f;
+        m_yMin = yCenter - halfRange;
+        m_yMax = yCenter + halfRange;
+        m_autoScale = false;
+    } else {
+        // Wheel: X-axis time zoom
+        m_xRangeSeconds = std::max(0.5, m_xRangeSeconds * factor);
+    }
+
     update();
+    emit timeAxisChanged();
 }
 
 void CurveWidget::mousePressEvent(QMouseEvent* event)
@@ -336,10 +502,10 @@ void CurveWidget::mouseMoveEvent(QMouseEvent* event)
     if (m_panning) {
         QPoint delta = event->pos() - m_lastMousePos;
         m_lastMousePos = event->pos();
-        // 平移（调整t0）
         double dt = -delta.x() / (double)width() * m_xRangeSeconds;
-        m_t0 = (m_t0 > dt * 1000000.0) ? m_t0 - dt * 1000000.0 : 0;
+        m_t0 = (m_t0 > dt * 1000000.0) ? static_cast<uint64_t>(m_t0 - dt * 1000000.0) : 0;
         update();
+        emit timeAxisChanged();
     }
 }
 

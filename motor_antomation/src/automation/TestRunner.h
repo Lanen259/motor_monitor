@@ -1,5 +1,7 @@
 #pragma once
 #include <QObject>
+#include <QThread>
+#include <QString>
 #include <memory>
 #include <string>
 #include "AutomationEngine.h"
@@ -17,8 +19,17 @@ public:
     void stop();
     bool isRunning() const;
 
+    // 已生成的最新报告路径（HTML + CSV）
+    QString lastHtmlReport() const;
+    QString lastCsvReport() const;
+
 signals:
     void runnerFinished(const TestResult& result);
+    // 报告生成完成后发出
+    void reportGenerated(const QString& htmlPath, const QString& csvPath);
+
+private slots:
+    void onEngineTestCompleted(const TestResult& result);
 
 private:
     struct Impl;

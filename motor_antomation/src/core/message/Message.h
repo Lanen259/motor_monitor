@@ -24,9 +24,12 @@ struct Response {
 
 // 实时数据点
 struct DataPoint {
-    uint32_t topicId;
-    float value;
-    uint64_t timestampUs;
+    uint32_t topicId = 0;
+    float value = 0.0f;
+    uint64_t timestampUs = 0;
+
+    DataPoint() = default;
+    DataPoint(uint32_t t, float v, uint64_t ts) : topicId(t), value(v), timestampUs(ts) {}
 };
 
 } // namespace MotorStudio

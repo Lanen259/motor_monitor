@@ -16,7 +16,7 @@ namespace MotorStudio {
 // ============================================================
 class CurveChannel {
 public:
-    static constexpr size_t DEFAULT_CAPACITY = 10000;
+    static constexpr size_t DEFAULT_CAPACITY = 100000;
 
     explicit CurveChannel(uint32_t topicId, size_t capacity = DEFAULT_CAPACITY);
     ~CurveChannel() = default;
@@ -40,6 +40,9 @@ public:
     size_t capacity() const { return capacity_; }
     size_t count() const { return count_; }
     size_t totalWritten() const { return totalWritten_; }
+
+    // 调整环形缓存容量（线程安全）
+    void setCapacity(size_t newCapacity);
 
     // 清空
     void clear();
@@ -77,6 +80,9 @@ public:
 
     // 是否有通道
     bool hasChannel(uint32_t topicId) const;
+
+    // 调整指定通道的环形缓存容量
+    void setCapacity(uint32_t topicId, size_t capacity);
 
     // 所有通道 ID
     std::vector<uint32_t> channelIds() const;

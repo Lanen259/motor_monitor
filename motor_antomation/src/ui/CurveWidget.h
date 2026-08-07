@@ -8,44 +8,68 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <cstdint>
+#include <vector>
+#include <utility>
 
 namespace MotorStudio {
 
-// ============================================================
-// 实时曲线绘制控件
-// 支持多通道、降采样显示、自动缩放、鼠标交互
-// ============================================================
+class CurveEngine;
+
+// Real-time curve rendering widget
+// Supports direct push mode (legacy) and CurveEngine pull mode (P0 target)
 class CurveWidget : public QWidget {
     Q_OBJECT
 public:
     explicit CurveWidget(QWidget* parent = nullptr);
 
-    // 通道管理
+    // Channel management
     int addChannel(const QString& name, const QColor& color = Qt::cyan);
     void removeChannel(int index);
     void clearAllChannels();
     int channelCount() const { return m_channels.size(); }
 
-    // 数据推送
+    // Direct data push (legacy mode)
     void pushData(int channelIndex, float value, uint64_t timestampUs = 0);
     void pushFrame(const QVector<float>& values, uint64_t timestampUs = 0);
 
-    // 显示控制
+    // CurveEngine-backed mode (P0 target)
+    // Set the engine and start timer-based pull at target FPS
+    void attachCurveEngine(CurveEngine* engine, int fps = 30);
+    void detachCurveEngine();
+
+    // Display control
     void setYAxisLabel(const QString& label) { m_yAxisLabel = label; }
     void setXAxisLabel(const QString& label) { m_xAxisLabel = label; }
     void setAutoScale(bool enabled) { m_autoScale = enabled; }
     void setYRange(float min, float max);
     void setXRangeSeconds(double seconds);
 
-    // 通道颜色
+    // Time-axis accessors (WI-008: grid sync)
+    uint64_t timeBase() const { return m_t0; }
+    double xRangeSeconds() const { return m_xRangeSeconds; }
+    void setTimeBase(uint64_t t0);
+
+    // Channel color
     void setChannelColor(int index, const QColor& color);
     QColor channelColor(int index) const;
 
-    // 清除数据
+    // Channel accessors (WI-009: CurveManagerPanel support)
+    QString channelName(int index) const;
+    void setChannelVisible(int index, bool visible);
+    bool isChannelVisible(int index) const;
+    uint32_t channelTopicId(int index) const;
+
+    // Clear data
     void clearData();
 
-    // 保存截图
+    // Save screenshot
     void saveScreenshot(const QString& filePath);
+
+    // Frame timing (WI-010: high-frequency performance)
+    double frameIntervalMs() const { return m_frameIntervalMs; }
+
+signals:
+    void timeAxisChanged();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -55,14 +79,18 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
 
+private slots:
+    void onPullTimer();
+
 private:
     struct Channel {
         QString name;
         QColor color;
-        QVector<QPointF> data;  // (timestamp, value)
+        QVector<QPointF> data;  // (timestamp_seconds, value)
         bool visible = true;
         float minVal = 0;
         float maxVal = 0;
+        uint32_t topicId = 0;   // bound CurveEngine topic (0 = none)
     };
 
     void updateAutoScale();
@@ -80,16 +108,24 @@ private:
     bool m_autoScale;
     float m_yMin;
     float m_yMax;
-    double m_xRangeSeconds;  // X轴显示范围（秒）
-    uint64_t m_t0;           // 起始时间戳
+    double m_xRangeSeconds;
+    uint64_t m_t0;
 
-    // 鼠标交互
+    // Mouse interaction
     bool m_dragging;
     QPoint m_lastMousePos;
     bool m_panning;
 
-    // 降采样
-    static constexpr int kMaxDrawPoints = 2000;  // 每通道最多绘制点数
+    // CurveEngine pull mode
+    CurveEngine* m_curveEngine = nullptr;
+    QTimer* m_pullTimer = nullptr;
+
+    // Frame timing (WI-010)
+    QElapsedTimer m_frameTimer;
+    double m_frameIntervalMs = 0.0;
+
+    // Downsampling: widget integrates CurveEngine::downsample() (LTTB)
+    // No longer uses manual kMaxDrawPoints truncation
 };
 
 } // namespace MotorStudio

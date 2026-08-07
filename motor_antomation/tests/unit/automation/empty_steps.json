@@ -1,0 +1,6 @@
+{
+  "name": "Empty Test",
+  "description": "Test case with no steps",
+  "stopOnFailure": true,
+  "steps": []
+}

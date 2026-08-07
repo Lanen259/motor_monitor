@@ -10,14 +10,14 @@
 namespace MotorStudio {
 
 // ============================================================
-// 带时间戳的数据点
+// 带时间戳的通道数据点（内部使用，与 Message::DataPoint 不同）
 // ============================================================
-struct DataPoint {
+struct ChannelDataPoint {
     float value = 0.0f;
     uint64_t timestampUs = 0;
 
-    DataPoint() = default;
-    DataPoint(float v, uint64_t t) : value(v), timestampUs(t) {}
+    ChannelDataPoint() = default;
+    ChannelDataPoint(float v, uint64_t t) : value(v), timestampUs(t) {}
 };
 
 // ============================================================
@@ -34,21 +34,21 @@ public:
     void push(float value, uint64_t timestampUs = 0);
     void clear();
 
-    const QVector<DataPoint>& data() const { return m_buffer; }
-    DataPoint latest() const;
+    const QVector<ChannelDataPoint>& data() const { return m_buffer; }
+    ChannelDataPoint latest() const;
     float latestValue() const;
     int count() const { return m_count; }
 
     int maxSeconds() const { return m_maxSeconds; }
     void setMaxSeconds(int seconds);
 
-    QVector<DataPoint> rangeData(uint64_t startUs, uint64_t endUs) const;
+    QVector<ChannelDataPoint> rangeData(uint64_t startUs, uint64_t endUs) const;
 
 private:
     void trimOldData();
 
     QString m_name;
-    QVector<DataPoint> m_buffer;
+    QVector<ChannelDataPoint> m_buffer;
     int m_maxSeconds;
     int m_writeIndex;
     int m_count;
@@ -78,7 +78,7 @@ public:
 
     float latestValue(int index) const;
     QVector<float> latestValues() const;
-    QVector<DataPoint> channelData(int index, int offset, int count) const;
+    QVector<ChannelDataPoint> channelData(int index, int offset, int count) const;
 
     int totalPoints() const;
 

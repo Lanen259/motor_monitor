@@ -1,0 +1,50 @@
+{
+  "name": "Motor Basic Test",
+  "description": "Basic motor start/stop and parameter validation test",
+  "stopOnFailure": true,
+  "steps": [
+    {
+      "type": "SetParameter",
+      "description": "Set target speed to 1000 RPM",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "Speed": "1000"
+      }
+    },
+    {
+      "type": "Wait",
+      "description": "Wait for motor to stabilize",
+      "timeoutMs": 5000,
+      "retryCount": 0,
+      "params": {
+        "durationMs": "100"
+      }
+    },
+    {
+      "type": "StartMotor",
+      "description": "Start the motor",
+      "timeoutMs": 3000,
+      "retryCount": 0,
+      "params": {}
+    },
+    {
+      "type": "Assert",
+      "description": "Check speed is within valid range",
+      "timeoutMs": 2000,
+      "retryCount": 0,
+      "params": {
+        "channel": "Speed",
+        "min": "500",
+        "max": "1500"
+      }
+    },
+    {
+      "type": "StopMotor",
+      "description": "Stop the motor",
+      "timeoutMs": 3000,
+      "retryCount": 0,
+      "params": {}
+    }
+  ]
+}

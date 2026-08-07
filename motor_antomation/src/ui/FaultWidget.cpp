@@ -16,9 +16,9 @@ FaultWidget::FaultWidget(QWidget* parent)
     // 状态栏
     auto* statusBar = new QHBoxLayout();
     m_statusLabel = new QLabel(tr(" 无故障 "));
-    m_statusLabel->setStyleSheet("QLabel { color: #00ff00; font-weight: bold; font-size: 14px; }");
+    m_statusLabel->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
     m_countLabel = new QLabel(tr("0 个活动故障"));
-    m_countLabel->setStyleSheet("QLabel { color: #888; }");
+    m_countLabel->setStyleSheet("QLabel { color: #757575; }");
 
     auto* clearBtn = new QPushButton(tr("清除全部"));
     statusBar->addWidget(m_statusLabel);
@@ -29,7 +29,7 @@ FaultWidget::FaultWidget(QWidget* parent)
 
     // 故障列表
     m_faultList = new QListWidget();
-    m_faultList->setStyleSheet("QListWidget { background-color: #1a1a2e; color: #ccc; border: 1px solid #333; }");
+    m_faultList->setStyleSheet("QListWidget { background-color: #FFFFFF; color: #212121; border: 1px solid #E0E0E0; }");
     layout->addWidget(m_faultList);
 
     connect(clearBtn, &QPushButton::clicked, this, &FaultWidget::clearAllFaults);
@@ -115,13 +115,13 @@ void FaultWidget::refreshDisplay()
 
     if (activeCount == 0) {
         m_statusLabel->setText(tr(" 无故障 "));
-        m_statusLabel->setStyleSheet("QLabel { color: #00ff00; font-weight: bold; font-size: 14px; }");
+        m_statusLabel->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
     } else if (hasHardwareFault()) {
         m_statusLabel->setText(tr(" ⚠ 硬件故障 "));
-        m_statusLabel->setStyleSheet("QLabel { color: #ff0000; font-weight: bold; font-size: 14px; }");
+        m_statusLabel->setStyleSheet("QLabel { color: #F44336; font-weight: bold; font-size: 14px; }");
     } else {
         m_statusLabel->setText(tr(" 有故障 "));
-        m_statusLabel->setStyleSheet("QLabel { color: #ff8800; font-weight: bold; font-size: 14px; }");
+        m_statusLabel->setStyleSheet("QLabel { color: #FF9800; font-weight: bold; font-size: 14px; }");
     }
 
     emit faultCountChanged(activeCount);

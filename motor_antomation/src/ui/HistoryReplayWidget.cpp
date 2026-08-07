@@ -11,6 +11,9 @@
 #include <QTextStream>
 #include <QDateTime>
 #include <QScrollBar>
+#include <QSet>
+#include <QDebug>
+#include <QFileInfo>
 #include <algorithm>
 
 namespace MotorStudio {
@@ -65,18 +68,18 @@ void HistoryReplayWidget::setupUI()
     m_openBtn = new QPushButton(tr("打开 CSV"));
     m_openBtn->setMinimumSize(100, 32);
     m_openBtn->setStyleSheet(
-        "QPushButton { font-size: 13px; font-weight: bold; background-color: #1565c0; "
+        "QPushButton { font-size: 13px; font-weight: bold; background-color: #2196F3; "
         "color: white; border: none; border-radius: 4px; padding: 4px 14px; }"
-        "QPushButton:hover { background-color: #1976d2; }");
+        "QPushButton:hover { background-color: #1976D2; }");
     connect(m_openBtn, &QPushButton::clicked, this, &HistoryReplayWidget::onOpenFile);
     toolbar->addWidget(m_openBtn);
 
     m_clearBtn = new QPushButton(tr("清除"));
     m_clearBtn->setMinimumSize(80, 32);
     m_clearBtn->setStyleSheet(
-        "QPushButton { font-size: 13px; background-color: #555; "
-        "color: #ccc; border: none; border-radius: 4px; padding: 4px 14px; }"
-        "QPushButton:hover { background-color: #666; }");
+        "QPushButton { font-size: 13px; background-color: #F5F5F5; "
+        "color: #757575; border: 1px solid #E0E0E0; border-radius: 4px; padding: 4px 14px; }"
+        "QPushButton:hover { background-color: #E0E0E0; }");
     connect(m_clearBtn, &QPushButton::clicked, this, &HistoryReplayWidget::clearAll);
     toolbar->addWidget(m_clearBtn);
 
@@ -88,10 +91,10 @@ void HistoryReplayWidget::setupUI()
     m_channelFilter->setMinimumWidth(150);
     m_channelFilter->addItem(tr("全部通道"));
     m_channelFilter->setStyleSheet(
-        "QComboBox { background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; "
+        "QComboBox { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0; "
         "border-radius: 3px; padding: 4px 8px; }"
         "QComboBox::drop-down { border: none; }"
-        "QComboBox QAbstractItemView { background: #2a2a2a; color: #e0e0e0; }");
+        "QComboBox QAbstractItemView { background: #FFFFFF; color: #212121; }");
     connect(m_channelFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &HistoryReplayWidget::onChannelFilterChanged);
     toolbar->addWidget(m_channelFilter);
@@ -99,7 +102,7 @@ void HistoryReplayWidget::setupUI()
     toolbar->addStretch();
 
     m_infoLabel = new QLabel(tr("就绪 — 未加载文件"));
-    m_infoLabel->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
+    m_infoLabel->setStyleSheet("QLabel { color: #757575; font-size: 12px; }");
     toolbar->addWidget(m_infoLabel);
 
     mainLayout->addLayout(toolbar);
@@ -117,14 +120,14 @@ void HistoryReplayWidget::setupUI()
 void HistoryReplayWidget::applyDarkTheme()
 {
     setStyleSheet(
-        "QWidget { background: #1e1e1e; color: #e0e0e0; }"
-        "QGroupBox { font-weight: bold; border: 1px solid #333; border-radius: 6px; "
-        "margin-top: 12px; padding-top: 16px; background: #252525; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #90caf9; }"
-        "QDateTimeEdit { background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; "
+        "QWidget { background: #F5F7FA; color: #212121; }"
+        "QGroupBox { font-weight: bold; border: 1px solid #E0E0E0; border-radius: 6px; "
+        "margin-top: 12px; padding-top: 16px; background: #FFFFFF; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #1976D2; }"
+        "QDateTimeEdit { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0; "
         "border-radius: 3px; padding: 4px 8px; }"
-        "QScrollBar:vertical { background: #1a1a1a; width: 10px; border-radius: 5px; }"
-        "QScrollBar::handle:vertical { background: #444; border-radius: 5px; min-height: 30px; }");
+        "QScrollBar:vertical { background: #F5F5F5; width: 10px; border-radius: 5px; }"
+        "QScrollBar::handle:vertical { background: #BDBDBD; border-radius: 5px; min-height: 30px; }");
 }
 
 void HistoryReplayWidget::onOpenFile()

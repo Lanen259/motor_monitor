@@ -106,6 +106,42 @@ void CurveChannel::clear() {
     totalWritten_ = 0;
 }
 
+void CurveChannel::setCapacity(size_t newCapacity) {
+    if (newCapacity == 0) return;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (newCapacity == capacity_) return;
+
+    // Allocate new buffers
+    std::vector<uint64_t> newTs(newCapacity);
+    std::vector<float> newVals(newCapacity);
+
+    // Copy over existing data (up to new capacity, preserving newest points)
+    size_t copyCount = std::min(count_, newCapacity);
+    if (copyCount > 0) {
+        // Read from the oldest point, ignoring gaps
+        for (size_t i = 0; i < copyCount; ++i) {
+            size_t srcIdx;
+            if (count_ < capacity_) {
+                // Linear growth: older data at lower indices
+                srcIdx = count_ - copyCount + i;
+            } else {
+                // Wrapped: oldest data starts at writeIndex_
+                srcIdx = (writeIndex_ + i) % capacity_;
+            }
+            newTs[i] = timestamps_[srcIdx];
+            newVals[i] = values_[srcIdx];
+        }
+    }
+
+    timestamps_ = std::move(newTs);
+    values_ = std::move(newVals);
+    capacity_ = newCapacity;
+    writeIndex_ = (copyCount < newCapacity) ? copyCount : 0;
+    count_ = copyCount;
+}
+
 // ============================================================
 // CurveEngine 实现
 // ============================================================
@@ -150,6 +186,13 @@ void CurveEngine::removeChannel(uint32_t topicId) {
 void CurveEngine::clearChannels() {
     std::unique_lock<std::shared_mutex> lock(d->mutex);
     d->channels.clear();
+}
+
+void CurveEngine::setCapacity(uint32_t topicId, size_t capacity) {
+    auto* ch = channel(topicId);
+    if (ch) {
+        ch->setCapacity(capacity);
+    }
 }
 
 CurveChannel* CurveEngine::channel(uint32_t topicId) {

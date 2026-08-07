@@ -22,7 +22,7 @@ ChannelRingBuffer::ChannelRingBuffer(const QString& name, int maxSeconds)
 
 void ChannelRingBuffer::push(float value, uint64_t timestampUs)
 {
-    DataPoint dp(value, timestampUs);
+    ChannelDataPoint dp(value, timestampUs);
 
     if (m_count < m_buffer.capacity()) {
         m_buffer.append(dp);
@@ -47,9 +47,9 @@ void ChannelRingBuffer::clear()
     m_count = 0;
 }
 
-DataPoint ChannelRingBuffer::latest() const
+ChannelDataPoint ChannelRingBuffer::latest() const
 {
-    if (m_count == 0) return DataPoint();
+    if (m_count == 0) return ChannelDataPoint();
     if (m_count <= m_buffer.size()) {
         return m_buffer.last();
     }
@@ -76,7 +76,7 @@ void ChannelRingBuffer::trimOldData()
 
     uint64_t cutoffUs = 0;
     // 获取最新时间戳
-    DataPoint last = latest();
+    ChannelDataPoint last = latest();
     if (last.timestampUs > 0) {
         cutoffUs = last.timestampUs - static_cast<uint64_t>(m_maxSeconds) * 1000000ULL;
     }
@@ -86,7 +86,7 @@ void ChannelRingBuffer::trimOldData()
     // 删除过期数据
     int removeCount = 0;
     while (removeCount < m_count) {
-        const DataPoint& dp = m_buffer[removeCount];
+        const ChannelDataPoint& dp = m_buffer[removeCount];
         if (dp.timestampUs >= cutoffUs) break;
         removeCount++;
     }
@@ -98,9 +98,9 @@ void ChannelRingBuffer::trimOldData()
     }
 }
 
-QVector<DataPoint> ChannelRingBuffer::rangeData(uint64_t startUs, uint64_t endUs) const
+QVector<ChannelDataPoint> ChannelRingBuffer::rangeData(uint64_t startUs, uint64_t endUs) const
 {
-    QVector<DataPoint> result;
+    QVector<ChannelDataPoint> result;
     for (const auto& dp : m_buffer) {
         if (dp.timestampUs >= startUs && dp.timestampUs <= endUs) {
             result.append(dp);
@@ -211,7 +211,7 @@ QVector<float> ChannelManager::latestValues() const
     return values;
 }
 
-QVector<DataPoint> ChannelManager::channelData(int index, int offset, int count) const
+QVector<ChannelDataPoint> ChannelManager::channelData(int index, int offset, int count) const
 {
     const auto* ch = channel(index);
     if (!ch) return {};
@@ -221,7 +221,7 @@ QVector<DataPoint> ChannelManager::channelData(int index, int offset, int count)
     if (offset >= total) return {};
 
     int end = (count < 0) ? total : std::min(offset + count, total);
-    QVector<DataPoint> result;
+    QVector<ChannelDataPoint> result;
     result.reserve(end - offset);
     for (int i = offset; i < end; ++i) {
         result.append(data[i]);

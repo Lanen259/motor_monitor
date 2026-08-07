@@ -1,10 +1,13 @@
 #pragma once
 #include <QObject>
+#include <QMutex>
+#include <QWaitCondition>
 #include <memory>
 #include <string>
 #include <vector>
 #include <functional>
 #include <chrono>
+#include <unordered_map>
 
 namespace MotorStudio {
 
@@ -58,12 +61,13 @@ public:
     bool loadTestCase(const std::string& jsonFilePath);
     bool loadTestSuite(const std::string& jsonFilePath);
 
-    // 运行测试
-    void run();
+    // 运行测试（在工作线程中调用）
+    Q_INVOKABLE void run();
     void stop();
     void pause();
     void resume();
     bool isRunning() const;
+    bool isPaused() const;
 
     // 步骤执行（供脚本调用）
     bool executeStep(const TestStep& step);
@@ -72,16 +76,38 @@ public:
     using CustomStepFunc = std::function<bool(const TestStep&)>;
     void registerCustomStep(const std::string& name, CustomStepFunc func);
 
+    // 回调注册（从 MainWindow 注册，连接到 ParameterManager）
+    using SetParamCallback = std::function<bool(const std::string& name, const std::string& value)>;
+    using ReadParamCallback = std::function<std::string(const std::string& name)>;
+    using MotorControlCallback = std::function<bool()>;
+
+    void setSetParamCallback(SetParamCallback cb);
+    void setReadParamCallback(ReadParamCallback cb);
+    void setMotorStartCallback(MotorControlCallback cb);
+    void setMotorStopCallback(MotorControlCallback cb);
+
+    // 获取当前测试用例（只读）
+    const TestCase& currentTestCase() const;
+    // 设置当前测试用例（供TestRunner调用）
+    void setCurrentTestCase(const TestCase& tc);
+
 signals:
     void testStarted(const std::string& caseName);
     void testCompleted(const TestResult& result);
     void stepStarted(int stepIndex, const std::string& description);
     void stepCompleted(int stepIndex, bool success);
     void progressUpdated(int current, int total);
+    void logMessage(const std::string& message);
 
 private:
+    StepType parseStepType(const std::string& str) const;
+    std::string findParam(const TestStep& step, const std::string& key, const std::string& defaultValue = "") const;
+
     struct Impl;
     std::unique_ptr<Impl> d;
 };
 
 } // namespace MotorStudio
+
+Q_DECLARE_METATYPE(MotorStudio::TestResult)
+Q_DECLARE_METATYPE(std::string)
