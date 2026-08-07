@@ -8,6 +8,7 @@
 #include <QGroupBox>
 #include <QFormLayout>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <memory>
 #include <vector>
 #include <string>
@@ -20,10 +21,17 @@ struct TestStep;
 struct TestResult;
 enum class StepType : uint8_t;
 
+class FlowCanvas;
+class NodeLibraryPanel;
+class NodeParamPanel;
+class FlowRunner;
+struct FlowGraph;
+struct FlowRunResult;
+
 // Status per step for coloring the table rows
 enum class StepRunStatus { Pending, Running, Passed, Failed, Skipped };
 
-// Automation test panel — WI-013
+// Automation test panel — WI-013 (table mode) + WI-207 (flowchart mode)
 class AutomationWidget : public QWidget {
     Q_OBJECT
 public:
@@ -32,7 +40,12 @@ public:
 
     void connectEngine(AutomationEngine* engine);
 
+    // --- FlowGraph integration (WI-207) ---
+    bool loadFlowGraph(const QString& jsonPath);
+    void runFlowGraph();
+
 private slots:
+    // --- Table mode slots ---
     void onLoadTestCase();
     void onRun();
     void onStop();
@@ -48,14 +61,28 @@ private slots:
 
     void onStepSelected();
 
+    // --- Flowchart mode slots (WI-207) ---
+    void onLoadFlowGraph();
+    void onRunFlowGraph();
+    void onToggleView();
+    void onFlowNodeSelected(const std::string& nodeId);
+    void onFlowNodeDeselected();
+    void onFlowRunnerNodeStarted(const std::string& nodeId);
+    void onFlowRunnerNodeCompleted(const std::string& nodeId, bool success, const std::string& error);
+    void onFlowRunnerFinished(const FlowRunResult& result);
+    void onFlowRunnerLogMessage(const std::string& message);
+
 private:
     void setupUi();
+    void setupTableUi(QWidget* page);   // existing table-based UI (extracted)
+    void setupFlowUi(QWidget* page);    // new flowchart IDE layout (WI-207)
     void updateButtonStates(bool running, bool paused);
     void applyDarkTheme();
     void refreshStepTable();
     void updateRowColor(int row, StepRunStatus status);
     void showSummary(const TestResult& result);
 
+    // Shared
     AutomationEngine* m_engine = nullptr;
 
     // Current step status tracking
@@ -78,23 +105,33 @@ private:
     QLabel*         m_statusLabel   = nullptr;
     QProgressBar*   m_progressBar   = nullptr;
 
-    // Step table (left area)
+    // View toggle
+    QPushButton*    m_toggleViewBtn = nullptr;
+    QStackedWidget* m_viewStack     = nullptr;
+
+    // Table-mode specific
     QTableWidget*   m_stepTable     = nullptr;
 
-    // Step detail panel (right area)
+    // Step detail panel (right area) — table mode
     QGroupBox*      m_detailGroup   = nullptr;
     QFormLayout*    m_detailLayout  = nullptr;
     QLabel*         m_detailTypeLabel   = nullptr;
     QLabel*         m_detailDescLabel   = nullptr;
     QLabel*         m_detailTimeoutLabel = nullptr;
     QLabel*         m_detailRetryLabel  = nullptr;
-    // Dynamic param labels added in onStepSelected
 
-    // Execution log (bottom)
+    // Execution log (bottom) — shared between both modes
     QPlainTextEdit* m_stepLog       = nullptr;
 
-    // Summary label
+    // Summary label — shared
     QLabel*         m_summaryLabel  = nullptr;
+
+    // --- Flowchart mode (WI-207) ---
+    FlowCanvas*         m_flowCanvas    = nullptr;
+    NodeLibraryPanel*   m_nodeLibrary   = nullptr;
+    NodeParamPanel*     m_paramPanel    = nullptr;
+    FlowRunner*         m_flowRunner    = nullptr;
+    FlowGraph           m_currentFlowGraph;
 };
 
 } // namespace MotorStudio

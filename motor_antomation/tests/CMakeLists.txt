@@ -130,6 +130,58 @@ target_link_libraries(TestAutomationEngine PRIVATE
 
 add_test(NAME TestAutomationEngine COMMAND TestAutomationEngine)
 
+# VariableScope unit test (WI-202)
+add_executable(TestVariableScope
+    unit/automation/test_variable_scope.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/VariableScope.cpp
+)
+
+target_include_directories(TestVariableScope PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(TestVariableScope PRIVATE
+    Qt5::Core
+    Qt5::Test
+)
+
+add_test(NAME TestVariableScope COMMAND TestVariableScope)
+
+# FlowGraph unit test (WI-203)
+add_executable(TestFlowGraph
+    unit/automation/test_flowgraph.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/FlowGraph.cpp
+)
+
+target_include_directories(TestFlowGraph PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(TestFlowGraph PRIVATE
+    Qt5::Core
+    Qt5::Test
+)
+
+add_test(NAME TestFlowGraph COMMAND TestFlowGraph)
+
+# ExpressionEngine unit test (WI-201)
+# Pure C++ engine, no Qt dependency — includes implementation directly.
+add_executable(TestExpressionEngine
+    unit/automation/test_expression_engine.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ExpressionEngine.cpp
+)
+
+target_include_directories(TestExpressionEngine PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(TestExpressionEngine PRIVATE
+    Qt5::Core
+    Qt5::Test
+)
+
+add_test(NAME TestExpressionEngine COMMAND TestExpressionEngine)
+
 # === WI-015: Integration Tests ===
 # Pipe: DeviceSimulator -> VofaParser -> DataBus -> CurveEngine
 

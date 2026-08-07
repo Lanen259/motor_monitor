@@ -1,5 +1,11 @@
 #include "AutomationWidget.h"
 #include "automation/AutomationEngine.h"
+#include "FlowCanvas.h"
+#include "NodeLibraryPanel.h"
+#include "NodeParamPanel.h"
+#include "automation/FlowRunner.h"
+#include "automation/FlowGraph.h"
+#include "automation/VariableScope.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -8,10 +14,34 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QThread>
 #include <QDebug>
 #include <sstream>
 
 namespace MotorStudio {
+
+// ============================================================
+// FlowRunWorker — helper that lives on a worker thread and
+//                 calls FlowRunner::run() without blocking UI
+// ============================================================
+namespace {
+
+class FlowRunWorker : public QObject {
+    Q_OBJECT
+public:
+    FlowRunner* runner = nullptr;
+    FlowGraph graph;
+    ExecutionContext ctx;
+
+public slots:
+    void doRun() {
+        if (runner) {
+            runner->run(graph, ctx);
+        }
+    }
+};
+
+} // anonymous namespace
 
 // ============================================================
 // Helper: StepType to display string
@@ -56,9 +86,21 @@ AutomationWidget::AutomationWidget(AutomationEngine* engine, QWidget* parent)
         connectEngine(m_engine);
     }
     updateButtonStates(false, false);
+
+    // Default to flowchart view
+    if (m_viewStack) {
+        m_viewStack->setCurrentIndex(1);  // flowchart page
+        m_toggleViewBtn->setText(QStringLiteral("表格视图"));
+    }
 }
 
-AutomationWidget::~AutomationWidget() = default;
+AutomationWidget::~AutomationWidget()
+{
+    // Stop any running flow
+    if (m_flowRunner) {
+        m_flowRunner->stop();
+    }
+}
 
 // ============================================================
 // Engine signal wiring
@@ -84,7 +126,7 @@ void AutomationWidget::connectEngine(AutomationEngine* engine)
 }
 
 // ============================================================
-// UI construction
+// UI construction — main layout with QStackedWidget
 // ============================================================
 
 void AutomationWidget::setupUi()
@@ -93,7 +135,7 @@ void AutomationWidget::setupUi()
     mainLayout->setContentsMargins(12, 12, 12, 12);
     mainLayout->setSpacing(8);
 
-    // ---- Row 0: toolbar (case name + status + buttons) ----
+    // ---- Row 0: toolbar (shared) ----
     auto* topBar = new QHBoxLayout();
     topBar->setSpacing(8);
 
@@ -106,6 +148,19 @@ void AutomationWidget::setupUi()
     topBar->addWidget(m_statusLabel);
 
     topBar->addStretch();
+
+    // View toggle button
+    m_toggleViewBtn = new QPushButton(tr("表格视图"));
+    m_toggleViewBtn->setFixedHeight(30);
+    m_toggleViewBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #F5F7FA; color: #2196F3;
+            border: 1px solid #BBDEFB; border-radius: 4px;
+            padding: 4px 12px; font-size: 12px; font-weight: bold;
+        }
+        QPushButton:hover { background-color: #E3F2FD; }
+    )");
+    topBar->addWidget(m_toggleViewBtn);
 
     m_loadBtn = new QPushButton(tr("加载测试..."));
     m_loadBtn->setFixedHeight(30);
@@ -133,7 +188,7 @@ void AutomationWidget::setupUi()
 
     mainLayout->addLayout(topBar);
 
-    // ---- Row 1: Progress bar ----
+    // ---- Row 1: Progress bar (shared) ----
     m_progressBar = new QProgressBar();
     m_progressBar->setFixedHeight(8);
     m_progressBar->setTextVisible(false);
@@ -141,7 +196,61 @@ void AutomationWidget::setupUi()
     m_progressBar->setValue(0);
     mainLayout->addWidget(m_progressBar);
 
-    // ---- Row 2: QSplitter — step table (left) + detail panel (right) ----
+    // ---- Row 2: QStackedWidget (table page + flowchart page) ----
+    m_viewStack = new QStackedWidget();
+
+    // Page 0: Table-based UI (existing)
+    auto* tablePage = new QWidget();
+    setupTableUi(tablePage);
+    m_viewStack->addWidget(tablePage);  // index 0
+
+    // Page 1: Flowchart IDE layout (WI-207)
+    auto* flowPage = new QWidget();
+    setupFlowUi(flowPage);
+    m_viewStack->addWidget(flowPage);   // index 1
+
+    mainLayout->addWidget(m_viewStack, 1);
+
+    // ---- Row 3: Execution log (shared) ----
+    auto* logTitle = new QLabel(tr("执行日志"));
+    logTitle->setStyleSheet("color: #2196F3; font-size: 12px; font-weight: bold;");
+    mainLayout->addWidget(logTitle);
+
+    m_stepLog = new QPlainTextEdit();
+    m_stepLog->setReadOnly(true);
+    m_stepLog->setMaximumBlockCount(2000);
+    m_stepLog->setFixedHeight(150);
+    mainLayout->addWidget(m_stepLog);
+
+    // ---- Row 4: Summary label (shared) ----
+    m_summaryLabel = new QLabel();
+    m_summaryLabel->setStyleSheet("color: #757575; font-size: 12px; padding: 4px 0;");
+    m_summaryLabel->setVisible(false);
+    mainLayout->addWidget(m_summaryLabel);
+
+    // ---- Connections (toolbar buttons) ----
+    m_loadBtn->setEnabled(true);  // Load is always enabled unless running
+    connect(m_toggleViewBtn, &QPushButton::clicked, this, &AutomationWidget::onToggleView);
+
+    // Default: connect to flowchart mode slots (will be re-wired on toggle)
+    connect(m_loadBtn,  &QPushButton::clicked, this, &AutomationWidget::onLoadFlowGraph);
+    connect(m_runBtn,   &QPushButton::clicked, this, &AutomationWidget::onRunFlowGraph);
+    connect(m_stopBtn,  &QPushButton::clicked, this, &AutomationWidget::onStop);
+    connect(m_pauseBtn, &QPushButton::clicked, this, &AutomationWidget::onPause);
+    connect(m_resumeBtn,&QPushButton::clicked, this, &AutomationWidget::onResume);
+}
+
+// ============================================================
+// Table-based UI page (existing code, extracted)
+// ============================================================
+
+void AutomationWidget::setupTableUi(QWidget* page)
+{
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(0);
+
+    // QSplitter — step table (left) + detail panel (right)
     auto* splitter = new QSplitter(Qt::Horizontal);
 
     // — Left: QTableWidget —
@@ -201,38 +310,47 @@ void AutomationWidget::setupUi()
 
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
-    mainLayout->addWidget(splitter, 1); // stretch=1
+    pageLayout->addWidget(splitter, 1);
 
-    // ---- Row 3: Execution log ----
-    auto* logTitle = new QLabel(tr("执行日志"));
-    logTitle->setStyleSheet("color: #2196F3; font-size: 12px; font-weight: bold;");
-    mainLayout->addWidget(logTitle);
-
-    m_stepLog = new QPlainTextEdit();
-    m_stepLog->setReadOnly(true);
-    m_stepLog->setMaximumBlockCount(2000);
-    m_stepLog->setFixedHeight(150);
-    mainLayout->addWidget(m_stepLog);
-
-    // ---- Row 4: Summary label ----
-    m_summaryLabel = new QLabel();
-    m_summaryLabel->setStyleSheet("color: #757575; font-size: 12px; padding: 4px 0;");
-    m_summaryLabel->setVisible(false);
-    mainLayout->addWidget(m_summaryLabel);
-
-    // ---- Connections ----
-    connect(m_loadBtn,  &QPushButton::clicked, this, &AutomationWidget::onLoadTestCase);
-    connect(m_runBtn,   &QPushButton::clicked, this, &AutomationWidget::onRun);
-    connect(m_stopBtn,  &QPushButton::clicked, this, &AutomationWidget::onStop);
-    connect(m_pauseBtn, &QPushButton::clicked, this, &AutomationWidget::onPause);
-    connect(m_resumeBtn,&QPushButton::clicked, this, &AutomationWidget::onResume);
-
+    // Step selection
     connect(m_stepTable, &QTableWidget::itemSelectionChanged,
             this, &AutomationWidget::onStepSelected);
 }
 
 // ============================================================
-// Dark theme
+// Flowchart IDE layout (WI-207)
+// ============================================================
+
+void AutomationWidget::setupFlowUi(QWidget* page)
+{
+    auto* pageLayout = new QHBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(4);
+
+    // --- Left: NodeLibraryPanel (fixed 220px) ---
+    m_flowCanvas = new FlowCanvas();
+    m_nodeLibrary = new NodeLibraryPanel(m_flowCanvas);
+    m_nodeLibrary->setFixedWidth(220);
+    pageLayout->addWidget(m_nodeLibrary);
+
+    // --- Center: FlowCanvas (stretch=1) ---
+    m_flowCanvas->setMinimumWidth(400);
+    pageLayout->addWidget(m_flowCanvas, 1);
+
+    // --- Right: NodeParamPanel (fixed 280px) ---
+    m_paramPanel = new NodeParamPanel();
+    m_paramPanel->setFixedWidth(280);
+    pageLayout->addWidget(m_paramPanel);
+
+    // --- Connections ---
+    connect(m_flowCanvas, &FlowCanvas::nodeSelected,
+            this, &AutomationWidget::onFlowNodeSelected);
+    connect(m_flowCanvas, &FlowCanvas::nodeDeselected,
+            this, &AutomationWidget::onFlowNodeDeselected);
+}
+
+// ============================================================
+// Theme (applied to both views)
 // ============================================================
 
 void AutomationWidget::applyDarkTheme()
@@ -281,33 +399,38 @@ void AutomationWidget::applyDarkTheme()
         QProgressBar::chunk { background-color: #2196F3; border-radius: 3px; }
     )");
 
-    m_stepTable->setStyleSheet(R"(
-        QTableWidget {
-            background-color: #FFFFFF; color: #212121;
-            border: 1px solid #FFFFFF; border-radius: 4px;
-            gridline-color: #E0E0E0; font-size: 12px;
-        }
-        QTableWidget::item { padding: 4px 8px; border-bottom: 1px solid #E0E0E0; }
-        QTableWidget::item:selected { background-color: #E3F2FD; color: #2196F3; }
-        QHeaderView::section {
-            background-color: #F5F7FA; color: #2196F3;
-            border: none; border-bottom: 2px solid #E0E0E0;
-            padding: 6px 8px; font-weight: bold; font-size: 12px;
-        }
-    )");
+    // Step table (only relevant in table mode)
+    if (m_stepTable) {
+        m_stepTable->setStyleSheet(R"(
+            QTableWidget {
+                background-color: #FFFFFF; color: #212121;
+                border: 1px solid #FFFFFF; border-radius: 4px;
+                gridline-color: #E0E0E0; font-size: 12px;
+            }
+            QTableWidget::item { padding: 4px 8px; border-bottom: 1px solid #E0E0E0; }
+            QTableWidget::item:selected { background-color: #E3F2FD; color: #2196F3; }
+            QHeaderView::section {
+                background-color: #F5F7FA; color: #2196F3;
+                border: none; border-bottom: 2px solid #E0E0E0;
+                padding: 6px 8px; font-weight: bold; font-size: 12px;
+            }
+        )");
+    }
 
-    m_detailGroup->setStyleSheet(R"(
-        QGroupBox {
-            background-color: #FFFFFF; color: #212121;
-            border: 1px solid #FFFFFF; border-radius: 6px;
-            margin-top: 8px; padding-top: 16px;
-            font-size: 13px; font-weight: bold;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin; left: 12px; padding: 0 6px;
-            color: #2196F3;
-        }
-    )");
+    if (m_detailGroup) {
+        m_detailGroup->setStyleSheet(R"(
+            QGroupBox {
+                background-color: #FFFFFF; color: #212121;
+                border: 1px solid #FFFFFF; border-radius: 6px;
+                margin-top: 8px; padding-top: 16px;
+                font-size: 13px; font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin; left: 12px; padding: 0 6px;
+                color: #2196F3;
+            }
+        )");
+    }
 
     m_stepLog->setStyleSheet(R"(
         QPlainTextEdit {
@@ -320,18 +443,74 @@ void AutomationWidget::applyDarkTheme()
 }
 
 // ============================================================
+// View toggle
+// ============================================================
+
+void AutomationWidget::onToggleView()
+{
+    if (!m_viewStack) return;
+
+    int currentIdx = m_viewStack->currentIndex();
+    int newIdx = (currentIdx == 0) ? 1 : 0;
+
+    m_viewStack->setCurrentIndex(newIdx);
+
+    // Update toggle button text
+    m_toggleViewBtn->setText(newIdx == 0 ? tr("流程图视图") : tr("表格视图"));
+
+    // Update load/run button connections
+    disconnect(m_loadBtn, nullptr, this, nullptr);
+    disconnect(m_runBtn,  nullptr, this, nullptr);
+
+    if (newIdx == 0) {
+        // Table mode
+        connect(m_loadBtn, &QPushButton::clicked, this, &AutomationWidget::onLoadTestCase);
+        connect(m_runBtn,  &QPushButton::clicked, this, &AutomationWidget::onRun);
+        m_loadBtn->setText(tr("加载测试..."));
+        m_caseNameLabel->setText(QString::fromStdString(
+            m_engine ? m_engine->currentTestCase().name : ""));
+        if (m_caseNameLabel->text().isEmpty())
+            m_caseNameLabel->setText(tr("未加载测试用例"));
+        bool hasCase = m_engine && !m_engine->currentTestCase().steps.empty();
+        m_runBtn->setEnabled(hasCase);
+    } else {
+        // Flowchart mode
+        connect(m_loadBtn, &QPushButton::clicked, this, &AutomationWidget::onLoadFlowGraph);
+        connect(m_runBtn,  &QPushButton::clicked, this, &AutomationWidget::onRunFlowGraph);
+        m_loadBtn->setText(tr("加载流程..."));
+        if (!m_currentFlowGraph.name.empty()) {
+            m_caseNameLabel->setText(QString::fromStdString(m_currentFlowGraph.name));
+        } else {
+            m_caseNameLabel->setText(tr("未加载流程图"));
+        }
+        bool hasGraph = !m_currentFlowGraph.nodes.empty();
+        m_runBtn->setEnabled(hasGraph);
+    }
+
+    updateButtonStates(false, false);
+}
+
+// ============================================================
 // Button state management
 // ============================================================
 
 void AutomationWidget::updateButtonStates(bool running, bool paused)
 {
-    bool hasCase = m_engine && !m_engine->currentTestCase().steps.empty();
+    bool isFlowchartMode = m_viewStack && m_viewStack->currentIndex() == 1;
+
+    bool hasCase = false;
+    if (isFlowchartMode) {
+        hasCase = !m_currentFlowGraph.nodes.empty();
+    } else {
+        hasCase = m_engine && !m_engine->currentTestCase().steps.empty();
+    }
 
     m_loadBtn->setEnabled(!running);
     m_runBtn->setEnabled(hasCase && !running);
     m_pauseBtn->setEnabled(running && !paused);
     m_resumeBtn->setEnabled(running && paused);
     m_stopBtn->setEnabled(running);
+    m_toggleViewBtn->setEnabled(!running);
 }
 
 // ============================================================
@@ -340,6 +519,7 @@ void AutomationWidget::updateButtonStates(bool running, bool paused)
 
 void AutomationWidget::refreshStepTable()
 {
+    if (!m_stepTable) return;
     m_stepTable->setRowCount(0);
 
     if (!m_engine) return;
@@ -372,7 +552,7 @@ void AutomationWidget::refreshStepTable()
         m_stepTable->setItem(i, 2, paramsItem);
 
         // Column 3: status
-        auto* statusItem = new QTableWidgetItem(QStringLiteral("—")); // em dash
+        auto* statusItem = new QTableWidgetItem(QStringLiteral("—"));
         statusItem->setTextAlignment(Qt::AlignCenter);
         m_stepTable->setItem(i, 3, statusItem);
 
@@ -388,7 +568,7 @@ void AutomationWidget::refreshStepTable()
 
 void AutomationWidget::updateRowColor(int row, StepRunStatus status)
 {
-    if (row < 0 || row >= m_stepTable->rowCount()) return;
+    if (!m_stepTable || row < 0 || row >= m_stepTable->rowCount()) return;
 
     QColor bg, fg;
     QString statusText;
@@ -396,22 +576,22 @@ void AutomationWidget::updateRowColor(int row, StepRunStatus status)
     case StepRunStatus::Running:
         bg = QColor("#E3F2FD");  // light blue tint
         fg = QColor("#2196F3");
-        statusText = QStringLiteral("▶"); // play triangle
+        statusText = QStringLiteral("▶");
         break;
     case StepRunStatus::Passed:
         bg = QColor("#E8F5E9");  // light green tint
         fg = QColor("#4CAF50");
-        statusText = QStringLiteral("✓"); // checkmark
+        statusText = QStringLiteral("✓");
         break;
     case StepRunStatus::Failed:
         bg = QColor("#FFEBEE");  // light red tint
         fg = QColor("#F44336");
-        statusText = QStringLiteral("✗"); // cross
+        statusText = QStringLiteral("✗");
         break;
     case StepRunStatus::Skipped:
         bg = QColor("#FFF8E1");  // light yellow tint
         fg = QColor("#FF9800");
-        statusText = QStringLiteral("—"); // em dash
+        statusText = QStringLiteral("—");
         break;
     case StepRunStatus::Pending:
     default:
@@ -462,7 +642,7 @@ void AutomationWidget::showSummary(const TestResult& result)
 }
 
 // ============================================================
-// Slots — user actions
+// Slots — user actions (table mode)
 // ============================================================
 
 void AutomationWidget::onLoadTestCase()
@@ -538,16 +718,24 @@ void AutomationWidget::onRun()
 
 void AutomationWidget::onStop()
 {
-    if (!m_engine) return;
-    m_engine->stop();
+    if (m_flowRunner) {
+        m_flowRunner->stop();
+    }
+    if (m_engine) {
+        m_engine->stop();
+    }
     m_statusLabel->setText(tr("停止中..."));
     m_statusLabel->setStyleSheet("color: #F44336; font-size: 13px;");
 }
 
 void AutomationWidget::onPause()
 {
-    if (!m_engine) return;
-    m_engine->pause();
+    if (m_flowRunner) {
+        m_flowRunner->pause();
+    }
+    if (m_engine) {
+        m_engine->pause();
+    }
     m_statusLabel->setText(tr("已暂停"));
     m_statusLabel->setStyleSheet("color: #FF9800; font-size: 13px; font-weight: bold;");
     updateButtonStates(true, true);
@@ -555,8 +743,9 @@ void AutomationWidget::onPause()
 
 void AutomationWidget::onResume()
 {
-    if (!m_engine) return;
-    m_engine->resume();
+    if (m_engine) {
+        m_engine->resume();
+    }
     m_statusLabel->setText(tr("运行中..."));
     m_statusLabel->setStyleSheet("color: #2196F3; font-size: 13px; font-weight: bold;");
     updateButtonStates(true, false);
@@ -568,12 +757,13 @@ void AutomationWidget::onResume()
 
 void AutomationWidget::onStepSelected()
 {
+    if (!m_stepTable) return;
     int row = m_stepTable->currentRow();
     if (row < 0 || !m_engine) {
-        m_detailTypeLabel->setText(QStringLiteral("-"));
-        m_detailDescLabel->setText(QStringLiteral("-"));
-        m_detailTimeoutLabel->setText(QStringLiteral("-"));
-        m_detailRetryLabel->setText(QStringLiteral("-"));
+        if (m_detailTypeLabel) m_detailTypeLabel->setText(QStringLiteral("-"));
+        if (m_detailDescLabel) m_detailDescLabel->setText(QStringLiteral("-"));
+        if (m_detailTimeoutLabel) m_detailTimeoutLabel->setText(QStringLiteral("-"));
+        if (m_detailRetryLabel) m_detailRetryLabel->setText(QStringLiteral("-"));
         return;
     }
 
@@ -582,29 +772,30 @@ void AutomationWidget::onStepSelected()
 
     const auto& step = tc.steps[row];
 
-    m_detailTypeLabel->setText(stepTypeLabel(step.type));
-    m_detailDescLabel->setText(QString::fromStdString(step.description));
-    m_detailTimeoutLabel->setText(QString("%1 ms").arg(step.timeoutMs));
-    m_detailRetryLabel->setText(QString::number(step.retryCount));
+    if (m_detailTypeLabel) m_detailTypeLabel->setText(stepTypeLabel(step.type));
+    if (m_detailDescLabel) m_detailDescLabel->setText(QString::fromStdString(step.description));
+    if (m_detailTimeoutLabel) m_detailTimeoutLabel->setText(QString("%1 ms").arg(step.timeoutMs));
+    if (m_detailRetryLabel) m_detailRetryLabel->setText(QString::number(step.retryCount));
 
     // Remove old dynamic param rows (keep the first 4 fixed rows)
-    while (m_detailLayout->rowCount() > 4) {
-        // QFormLayout::removeRow takes the row index; we keep removing from row 4 onwards
-        m_detailLayout->removeRow(4);
-    }
+    if (m_detailLayout) {
+        while (m_detailLayout->rowCount() > 4) {
+            m_detailLayout->removeRow(4);
+        }
 
-    // Add param key-value rows
-    for (const auto& kv : step.params) {
-        auto* keyLabel = new QLabel(QString::fromStdString(kv.first));
-        keyLabel->setStyleSheet("color: #C2185B; font-size: 12px;");
-        auto* valLabel = new QLabel(QString::fromStdString(kv.second));
-        valLabel->setStyleSheet("color: #00796B; font-size: 12px;");
-        m_detailLayout->addRow(keyLabel, valLabel);
+        // Add param key-value rows
+        for (const auto& kv : step.params) {
+            auto* keyLabel = new QLabel(QString::fromStdString(kv.first));
+            keyLabel->setStyleSheet("color: #C2185B; font-size: 12px;");
+            auto* valLabel = new QLabel(QString::fromStdString(kv.second));
+            valLabel->setStyleSheet("color: #00796B; font-size: 12px;");
+            m_detailLayout->addRow(keyLabel, valLabel);
+        }
     }
 }
 
 // ============================================================
-// Slots — engine signals
+// Slots — engine signals (table mode)
 // ============================================================
 
 void AutomationWidget::onTestStarted(const std::string& caseName)
@@ -644,7 +835,6 @@ void AutomationWidget::onStepStarted(int stepIndex, const std::string& /*descrip
     if (stepIndex < 0 || stepIndex >= static_cast<int>(m_stepStatuses.size())) return;
 
     // If any prior step is still marked Running (not yet completed), mark it Passed
-    // (handles the case where the completed signal arrived but we missed updating)
     for (int i = 0; i < stepIndex; ++i) {
         if (m_stepStatuses[i] == StepRunStatus::Running) {
             m_stepStatuses[i] = StepRunStatus::Passed;
@@ -655,8 +845,10 @@ void AutomationWidget::onStepStarted(int stepIndex, const std::string& /*descrip
 
     m_stepStatuses[stepIndex] = StepRunStatus::Running;
     updateRowColor(stepIndex, StepRunStatus::Running);
-    m_stepTable->scrollToItem(m_stepTable->item(stepIndex, 0));
-    m_stepTable->selectRow(stepIndex);
+    if (m_stepTable) {
+        m_stepTable->scrollToItem(m_stepTable->item(stepIndex, 0));
+        m_stepTable->selectRow(stepIndex);
+    }
 }
 
 void AutomationWidget::onStepCompleted(int stepIndex, bool success)
@@ -687,4 +879,286 @@ void AutomationWidget::onLogMessage(const std::string& message)
     m_stepLog->appendPlainText(QString("[%1] %2").arg(ts, QString::fromStdString(message)));
 }
 
+// ============================================================
+// Flowchart mode slots (WI-207)
+// ============================================================
+
+// --- FlowGraph loading ---
+
+bool AutomationWidget::loadFlowGraph(const QString& jsonPath)
+{
+    QFile file(jsonPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "AutomationWidget: Cannot open flow graph file:" << jsonPath;
+        return false;
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        qWarning() << "AutomationWidget: JSON parse error:" << parseError.errorString();
+        return false;
+    }
+
+    if (!doc.isObject()) {
+        qWarning() << "AutomationWidget: JSON root is not an object";
+        return false;
+    }
+
+    // Try to parse as FlowGraph first
+    auto graphOpt = FlowGraph::fromJson(doc.object());
+    if (graphOpt.has_value()) {
+        m_currentFlowGraph = std::move(graphOpt.value());
+    } else {
+        // Try to load as old table-format TestCase and convert
+        if (m_engine && m_engine->loadTestCase(jsonPath.toStdString())) {
+            const auto& tc = m_engine->currentTestCase();
+            m_currentFlowGraph = FlowGraph::fromTestCase(tc);
+        } else {
+            qWarning() << "AutomationWidget: Failed to parse flow graph or test case";
+            return false;
+        }
+    }
+
+    // Load into canvas
+    if (m_flowCanvas) {
+        m_flowCanvas->loadGraph(m_currentFlowGraph);
+    }
+
+    return true;
+}
+
+void AutomationWidget::onLoadFlowGraph()
+{
+    QString path = QFileDialog::getOpenFileName(
+        this, tr("加载流程图"), QString(),
+        tr("JSON 文件 (*.json);;所有文件 (*)"));
+
+    if (path.isEmpty()) return;
+
+    bool ok = loadFlowGraph(path);
+    if (!ok) {
+        QMessageBox::warning(this, tr("错误"), tr("加载流程图失败。\n请检查文件格式。"));
+        return;
+    }
+
+    m_caseNameLabel->setText(QString::fromStdString(m_currentFlowGraph.name));
+    m_stepLog->clear();
+    m_stepLog->appendPlainText(
+        QString("[%1] 已加载流程图: %2 (%3 节点)")
+            .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
+                 QString::fromStdString(m_currentFlowGraph.name))
+            .arg(static_cast<int>(m_currentFlowGraph.nodes.size())));
+
+    m_progressBar->setValue(0);
+    m_statusLabel->setText(tr("就绪"));
+    m_statusLabel->setStyleSheet("color: #4CAF50; font-size: 13px;");
+    m_summaryLabel->setVisible(false);
+
+    updateButtonStates(false, false);
+}
+
+// --- Flow graph execution ---
+
+void AutomationWidget::runFlowGraph()
+{
+    if (m_currentFlowGraph.nodes.empty()) {
+        QMessageBox::warning(this, tr("错误"), tr("没有加载流程图。"));
+        return;
+    }
+
+    if (!m_engine) {
+        QMessageBox::warning(this, tr("错误"), tr("自动化引擎未初始化"));
+        return;
+    }
+
+    m_stepLog->clear();
+    m_stepLog->appendPlainText(
+        QString("[%1] 开始流程图: %2")
+            .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
+                 QString::fromStdString(m_currentFlowGraph.name)));
+
+    m_statusLabel->setText(tr("运行中..."));
+    m_statusLabel->setStyleSheet("color: #2196F3; font-size: 13px; font-weight: bold;");
+    m_progressBar->setValue(0);
+    m_summaryLabel->setVisible(false);
+
+    // Clear previous highlights
+    if (m_flowCanvas) {
+        m_flowCanvas->clearAllHighlights();
+    }
+
+    updateButtonStates(true, false);
+
+    // Setup FlowRunner with worker thread
+    // Create FlowRunner (no parent — we'll manage it)
+    if (m_flowRunner) {
+        m_flowRunner->stop();
+        delete m_flowRunner;
+        m_flowRunner = nullptr;
+    }
+
+    m_flowRunner = new FlowRunner(m_engine);
+
+    // Connect FlowRunner signals
+    connect(m_flowRunner, &FlowRunner::nodeStarted,
+            this, &AutomationWidget::onFlowRunnerNodeStarted,
+            Qt::QueuedConnection);
+    connect(m_flowRunner, &FlowRunner::nodeCompleted,
+            this, &AutomationWidget::onFlowRunnerNodeCompleted,
+            Qt::QueuedConnection);
+    connect(m_flowRunner, &FlowRunner::runnerFinished,
+            this, &AutomationWidget::onFlowRunnerFinished,
+            Qt::QueuedConnection);
+    connect(m_flowRunner, &FlowRunner::logMessage,
+            this, &AutomationWidget::onFlowRunnerLogMessage,
+            Qt::QueuedConnection);
+
+    // Create worker thread
+    auto* workerThread = new QThread(this);
+    workerThread->setObjectName("FlowRunnerWorker");
+
+    // Create worker adapter (lives on worker thread)
+    auto* worker = new FlowRunWorker();
+    worker->runner = m_flowRunner;
+    worker->graph = m_currentFlowGraph;
+
+    // Build ExecutionContext
+    VariableScope* scope = new VariableScope();
+    // Declare graph variables in scope
+    for (const auto& varName : m_currentFlowGraph.variables) {
+        scope->setNumber(varName, 0.0);
+    }
+
+    worker->ctx.variables = scope;
+    worker->ctx.engine = m_engine;
+    worker->ctx.log = [](const std::string&) {
+        // Log messages come through Qt signals (FlowRunner::logMessage)
+    };
+
+    // Move worker + runner to worker thread
+    m_flowRunner->moveToThread(workerThread);
+    worker->moveToThread(workerThread);
+
+    // Clean up thread when done
+    connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(workerThread, &QThread::finished, scope, &QObject::deleteLater);
+
+    // Invoke run on worker thread
+    workerThread->start();
+    QMetaObject::invokeMethod(worker, "doRun", Qt::QueuedConnection);
+}
+
+void AutomationWidget::onRunFlowGraph()
+{
+    runFlowGraph();
+}
+
+// --- FlowRunner signal handlers ---
+
+void AutomationWidget::onFlowNodeSelected(const std::string& nodeId)
+{
+    if (!m_paramPanel) return;
+
+    // Find the node in the current flow graph (persistent, mutable)
+    FlowNode* foundNode = const_cast<FlowNode*>(m_currentFlowGraph.findNode(nodeId));
+    if (foundNode) {
+        m_paramPanel->setNode(foundNode);
+    } else {
+        m_paramPanel->clearNode();
+    }
+}
+
+void AutomationWidget::onFlowNodeDeselected()
+{
+    if (m_paramPanel) {
+        m_paramPanel->clearNode();
+    }
+}
+
+void AutomationWidget::onFlowRunnerNodeStarted(const std::string& nodeId)
+{
+    if (m_flowCanvas) {
+        m_flowCanvas->highlightNode(nodeId, true);
+    }
+    onLogMessage("[流程图] 节点开始: " + nodeId);
+}
+
+void AutomationWidget::onFlowRunnerNodeCompleted(const std::string& nodeId, bool success, const std::string& error)
+{
+    // Keep highlight but change color/intensity (handled by FlowCanvas)
+    // For now, just log the result
+    QString statusStr = success ? "成功" : "失败";
+    QString msg = QString("[流程图] 节点完成: %1 [%2]").arg(QString::fromStdString(nodeId), statusStr);
+    if (!error.empty()) {
+        msg += " 错误: " + QString::fromStdString(error);
+    }
+    onLogMessage(msg.toStdString());
+}
+
+void AutomationWidget::onFlowRunnerFinished(const FlowRunResult& result)
+{
+    m_statusLabel->setText(result.passed ? "PASSED" : "FAILED");
+    m_statusLabel->setStyleSheet(
+        QString("color: %1; font-size: 13px; font-weight: bold;")
+            .arg(result.passed ? "#4CAF50" : "#F44336"));
+
+    // Build flow summary
+    int totalNodes = static_cast<int>(result.stepResults.size());
+    int passedCount = 0;
+    int failedCount = 0;
+    for (const auto& sr : result.stepResults) {
+        if (sr.passed) passedCount++; else failedCount++;
+    }
+
+    QString summary = QString("流程图汇总: 总计:%1 | 通过:%2 | 失败:%3 | 耗时:%4 ms")
+        .arg(totalNodes)
+        .arg(passedCount)
+        .arg(failedCount)
+        .arg(result.totalDuration.count());
+
+    m_summaryLabel->setText(summary);
+    m_summaryLabel->setStyleSheet(
+        QString("color: %1; font-size: 13px; font-weight: bold; padding: 4px 0;")
+            .arg(result.passed ? "#4CAF50" : "#F44336"));
+    m_summaryLabel->setVisible(true);
+
+    m_stepLog->appendPlainText(
+        QString("[%1] === 流程图%2 === (耗时: %3 ms)")
+            .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"),
+                 result.passed ? "PASSED" : "FAILED")
+            .arg(result.totalDuration.count()));
+
+    if (!result.errorMessage.empty()) {
+        m_stepLog->appendPlainText(
+            QString("  错误: %1").arg(QString::fromStdString(result.errorMessage)));
+    }
+
+    // Clear highlights
+    if (m_flowCanvas) {
+        m_flowCanvas->clearAllHighlights();
+    }
+
+    // Quit the worker thread now that the run is complete
+    if (m_flowRunner) {
+        QThread* workerThread = m_flowRunner->thread();
+        if (workerThread && workerThread != this->thread()) {
+            workerThread->quit();
+            workerThread->wait(3000);
+        }
+    }
+
+    updateButtonStates(false, false);
+}
+
+void AutomationWidget::onFlowRunnerLogMessage(const std::string& message)
+{
+    onLogMessage(message);
+}
+
 } // namespace MotorStudio
+
+#include "AutomationWidget.moc"
