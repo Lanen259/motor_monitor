@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <atomic>
 #include <functional>
 #include <chrono>
 #include <string>
@@ -64,6 +65,9 @@ public:
     /// Request a pause.
     void pause();
 
+    /// Resume from a pause.
+    void resume();
+
 signals:
     void nodeStarted(const std::string& nodeId);
     void nodeCompleted(const std::string& nodeId, bool success, const std::string& error);
@@ -87,6 +91,7 @@ private:
     FlowStepResult execStartMotor(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execStopMotor(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execAssign(const FlowNode& node, ExecutionContext& ctx);
+    FlowStepResult execCalc(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execIf(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execLoop(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execSubFlow(const FlowNode& node, ExecutionContext& ctx,
@@ -94,6 +99,8 @@ private:
     FlowStepResult execAssert(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execLog(const FlowNode& node, ExecutionContext& ctx);
     FlowStepResult execRecordData(const FlowNode& node, ExecutionContext& ctx);
+    FlowStepResult execUnsupported(const FlowNode& node, ExecutionContext& ctx,
+                                   const std::string& type);
 
     // ---- Helpers --------------------------------------------------------------
     static ValueProvider makeValueProvider(VariableScope* variables);
@@ -104,6 +111,11 @@ private:
     void handlePause(ExecutionContext& ctx);
 
     AutomationEngine* m_engine;
+
+    // 跨线程的停止/暂停标志：FlowRunner 运行在工作线程，
+    // stop()/pause()/resume() 由 UI 线程调用，用原子变量传递状态。
+    std::atomic<bool> m_stopRequested{false};
+    std::atomic<bool> m_pauseRequested{false};
 };
 
 } // namespace MotorStudio

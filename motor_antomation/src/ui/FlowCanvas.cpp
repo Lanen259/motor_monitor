@@ -372,6 +372,40 @@ bool FlowNodeItem::isPortHit(const QPointF& scenePos, PortType* outPort) const
     return false;
 }
 
+bool FlowNodeItem::outputPortHit(const QPointF& scenePos, PortType* outPort) const
+{
+    QPointF local = mapFromScene(scenePos);
+
+    // Output port(s)
+    if (isIfNode()) {
+        QPointF yesPort(NODE_WIDTH * 0.3, NODE_HEIGHT);
+        if (QLineF(local, yesPort).length() <= PORT_RADIUS + 3.0) {
+            if (outPort) *outPort = PortType::Yes;
+            return true;
+        }
+        QPointF noPort(NODE_WIDTH * 0.7, NODE_HEIGHT);
+        if (QLineF(local, noPort).length() <= PORT_RADIUS + 3.0) {
+            if (outPort) *outPort = PortType::No;
+            return true;
+        }
+    } else {
+        QPointF outPortPt(NODE_WIDTH / 2.0, NODE_HEIGHT);
+        if (QLineF(local, outPortPt).length() <= PORT_RADIUS + 3.0) {
+            if (outPort) *outPort = PortType::Default;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool FlowNodeItem::inputPortHit(const QPointF& scenePos) const
+{
+    QPointF local = mapFromScene(scenePos);
+    QPointF inPort(NODE_WIDTH / 2.0, 0);
+    return QLineF(local, inPort).length() <= PORT_RADIUS + 3.0;
+}
+
 QVariant FlowNodeItem::itemChange(GraphicsItemChange change, const QVariant& value)
 {
     if (change == ItemPositionHasChanged) {
@@ -379,9 +413,19 @@ QVariant FlowNodeItem::itemChange(GraphicsItemChange change, const QVariant& val
         m_node.posX = pos().x();
         m_node.posY = pos().y();
 
-        // Notify canvas to update connected edges
+        // 同步刷新场景 + 更新与本节点相连的边。
+        // 原来的实现用 QueuedConnection 逐次投递 update，拖动时会把事件队列灌满；
+        // 改为直接同步 update()（Qt 自动合并重绘），避免交互卡顿。
         if (auto* sc = scene()) {
-            QMetaObject::invokeMethod(sc, "update", Qt::QueuedConnection);
+            sc->update();
+            const QList<QGraphicsItem*> all = sc->items();
+            for (auto* e : all) {
+                if (auto* edgeItem = dynamic_cast<FlowEdgeItem*>(e)) {
+                    if (edgeItem->fromNode() == this || edgeItem->toNode() == this) {
+                        edgeItem->updatePath();
+                    }
+                }
+            }
         }
     }
     return QGraphicsItem::itemChange(change, value);
@@ -849,6 +893,38 @@ FlowNodeItem* FlowCanvas::findNodeItem(const std::string& id) const
     return nullptr;
 }
 
+FlowNodeItem* FlowCanvas::findNodeAtOutputPort(const QPointF& scenePos, PortType* port) const
+{
+    // 遍历场景所有节点做形状无关的端口命中检测。
+    // m_scene->items() 按堆叠顺序返回（最上层在前），重叠时优先最上层节点。
+    QList<QGraphicsItem*> allItems = m_scene->items();
+    for (auto* item : allItems) {
+        if (auto* nodeItem = dynamic_cast<FlowNodeItem*>(item)) {
+            if (nodeItem->outputPortHit(scenePos, port)) {
+                return nodeItem;
+            }
+        }
+    }
+    return nullptr;
+}
+
+FlowNodeItem* FlowCanvas::findNodeAtTarget(const QPointF& scenePos) const
+{
+    // 1) 任意端口命中（形状无关）
+    QList<QGraphicsItem*> allItems = m_scene->items();
+    for (auto* item : allItems) {
+        if (auto* nodeItem = dynamic_cast<FlowNodeItem*>(item)) {
+            if (nodeItem->inputPortHit(scenePos)
+                || nodeItem->outputPortHit(scenePos, nullptr)) {
+                return nodeItem;
+            }
+        }
+    }
+    // 2) 回退到节点身体命中
+    QGraphicsItem* hit = m_scene->itemAt(scenePos, transform());
+    return dynamic_cast<FlowNodeItem*>(hit);
+}
+
 void FlowCanvas::deleteSelectedItems()
 {
     QList<QGraphicsItem*> sel = m_scene->selectedItems();
@@ -948,15 +1024,13 @@ void FlowCanvas::mousePressEvent(QMouseEvent* event)
     if (event->button() == Qt::LeftButton) {
         m_pressScenePos = mapToScene(event->pos());
 
-        // Check if clicking on a port
-        QGraphicsItem* item = scene()->itemAt(m_pressScenePos, transform());
-        if (auto* nodeItem = dynamic_cast<FlowNodeItem*>(item)) {
-            PortType port;
-            if (nodeItem->isPortHit(m_pressScenePos, &port)) {
-                // Output port hit — start edge drag
-                startEdgeDrag(nodeItem, port);
-                return;
-            }
+        // 只从"输出端口"开始拖拽连线。
+        // 用遍历节点做形状无关的端口命中检测：itemAt() 在端口（节点边界）处
+        // 常因 shape() 边界判断而返回不到节点，导致连不上线。
+        PortType port = PortType::Default;
+        if (auto* nodeItem = findNodeAtOutputPort(m_pressScenePos, &port)) {
+            startEdgeDrag(nodeItem, port);
+            return;
         }
     }
 
@@ -985,18 +1059,14 @@ void FlowCanvas::mouseReleaseEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton && m_dragLine) {
         QPointF releasePos = mapToScene(event->pos());
-        QGraphicsItem* targetItem = scene()->itemAt(releasePos, transform());
 
-        if (auto* targetNode = dynamic_cast<FlowNodeItem*>(targetItem)) {
-            // Check if released on an input port
-            PortType dummy;
-            if (targetNode->isPortHit(releasePos, &dummy)) {
-                finishEdgeDrag(targetItem);
-                return;
-            }
+        // 松开在任意节点（身体或输入端口）上都算连线，容错更好
+        if (auto* targetNode = findNodeAtTarget(releasePos)) {
+            finishEdgeDrag(targetNode);
+            return;
         }
 
-        // Didn't land on a valid port — cancel
+        // Didn't land on a valid node — cancel
         cancelEdgeDrag();
         return;
     }
@@ -1023,12 +1093,14 @@ void FlowCanvas::startEdgeDrag(FlowNodeItem* fromNode, PortType port)
     m_scene->addItem(m_dragLine);
 }
 
-void FlowCanvas::finishEdgeDrag(QGraphicsItem* targetItem)
+void FlowCanvas::finishEdgeDrag(FlowNodeItem* toNode)
 {
-    if (!m_dragFromNode) return;
+    if (!m_dragFromNode || !toNode) {
+        cancelEdgeDrag();
+        return;
+    }
 
-    auto* toNode = dynamic_cast<FlowNodeItem*>(targetItem);
-    if (!toNode || toNode == m_dragFromNode) {
+    if (toNode == m_dragFromNode) {
         cancelEdgeDrag();
         return;
     }

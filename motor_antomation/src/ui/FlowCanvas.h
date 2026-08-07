@@ -48,6 +48,10 @@ public:
     QPointF noPortPos() const;              // bottom-right (No port, for If nodes)
 
     bool isPortHit(const QPointF& scenePos, PortType* outPort = nullptr) const;
+    // 形状无关的端口命中检测（用于连线拖拽）：只检测输出端口（Default/Yes/No）
+    bool outputPortHit(const QPointF& scenePos, PortType* outPort = nullptr) const;
+    // 只检测输入端口（顶部中心）
+    bool inputPortHit(const QPointF& scenePos) const;
 
     // Node geometry (used by FlowCanvas for placement)
     static constexpr int NODE_WIDTH  = 160;
@@ -143,10 +147,14 @@ protected:
 
 private:
     void startEdgeDrag(FlowNodeItem* fromNode, PortType port);
-    void finishEdgeDrag(QGraphicsItem* targetItem);
+    void finishEdgeDrag(FlowNodeItem* targetNode);
     void cancelEdgeDrag();
     void onSceneSelectionChanged();
     FlowNodeItem* findNodeItem(const std::string& id) const;
+    // 命中检测：遍历场景节点做形状无关的端口检测（itemAt 在端口边界会失效）
+    FlowNodeItem* findNodeAtOutputPort(const QPointF& scenePos, PortType* port = nullptr) const;
+    // 松开连线时的目标节点：任意端口 或 节点身体
+    FlowNodeItem* findNodeAtTarget(const QPointF& scenePos) const;
     void deleteSelectedItems();
     void editSelectedNode();
     std::string nextNodeId();

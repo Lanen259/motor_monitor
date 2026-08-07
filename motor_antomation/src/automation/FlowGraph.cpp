@@ -331,27 +331,102 @@ FlowGraph FlowGraph::fromTestCase(const TestCase& tc)
 
     IdGenerator idGen;
 
-    // Convert each TestStep → FlowNode
+    // Helper: find a param value in a TestStep
+    auto stepParam = [](const TestStep& s, const std::string& key) -> std::string {
+        for (const auto& kv : s.params) {
+            if (kv.first == key) return kv.second;
+        }
+        return "";
+    };
+
+    // Convert each TestStep → FlowNode(s)。
+    // 旧表格的参数键与 FlowRunner 执行器要求的键不一致，这里做一次翻译：
+    //  - SetParameter: {Speed:"1500"} → {name:"Speed", value:"1500"}（多个参数拆成多个节点）
+    //  - Wait:         {durationMs:"2000"} → {ms:"2000"}
+    //  - Assert:       {channel,min,max} → {condition:"channel:xx >= min && channel:xx <= max"}
     for (const auto& step : tc.steps) {
-        FlowNode node;
-        node.id    = idGen.next("n");
-        node.type  = stepTypeToFlowNodeType(step.type);
-        node.label = step.description;
-        node.params = step.params;
+        const std::string nodeType = stepTypeToFlowNodeType(step.type);
+
+        if (nodeType == "SetParameter") {
+            bool hasNameValue = stepParam(step, "name") != "" || stepParam(step, "value") != "";
+            if (!hasNameValue) {
+                // 每个键值对 → 一个 SetParameter 节点
+                for (const auto& kv : step.params) {
+                    FlowNode node;
+                    node.id    = idGen.next("n");
+                    node.type  = nodeType;
+                    node.label = step.description + " (" + kv.first + ")";
+                    node.params = {{"name", kv.first}, {"value", kv.second}};
+                    node.posX = 100.0;
+                    node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
+                    graph.nodes.push_back(std::move(node));
+                }
+            } else {
+                FlowNode node;
+                node.id    = idGen.next("n");
+                node.type  = nodeType;
+                node.label = step.description;
+                node.params = step.params;
+                node.posX = 100.0;
+                node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
+                graph.nodes.push_back(std::move(node));
+            }
+        } else if (nodeType == "Delay") {
+            FlowNode node;
+            node.id    = idGen.next("n");
+            node.type  = nodeType;
+            node.label = step.description;
+            // durationMs → ms
+            std::string dur = stepParam(step, "durationMs");
+            node.params = dur.empty() ? step.params
+                                      : std::vector<std::pair<std::string, std::string>>{{"ms", dur}};
+            node.posX = 100.0;
+            node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
+            graph.nodes.push_back(std::move(node));
+        } else if (nodeType == "Assert") {
+            // channel/min/max → 条件表达式（channel:xx 由表达式引擎解析）
+            std::string channel = stepParam(step, "channel");
+            std::string minStr  = stepParam(step, "min");
+            std::string maxStr  = stepParam(step, "max");
+
+            std::string cond;
+            if (!channel.empty()) {
+                std::string ref = "channel:" + channel;
+                if (!minStr.empty()) cond = ref + " >= " + minStr;
+                if (!maxStr.empty()) {
+                    if (!cond.empty()) cond += " && ";
+                    cond += ref + " <= " + maxStr;
+                }
+            } else {
+                cond = stepParam(step, "expression");
+            }
+
+            FlowNode node;
+            node.id    = idGen.next("n");
+            node.type  = nodeType;
+            node.label = step.description;
+            node.params = {{"condition", cond}, {"message", step.description}};
+            node.posX = 100.0;
+            node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
+            graph.nodes.push_back(std::move(node));
+        } else {
+            FlowNode node;
+            node.id    = idGen.next("n");
+            node.type  = nodeType;
+            node.label = step.description;
+            node.params = step.params;
+            node.posX = 100.0;
+            node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
+            graph.nodes.push_back(std::move(node));
+        }
 
         // Also store timeoutMs and retryCount as params if non-default
         if (step.timeoutMs != 5000) {
-            node.params.emplace_back("__timeoutMs", std::to_string(step.timeoutMs));
+            graph.nodes.back().params.emplace_back("__timeoutMs", std::to_string(step.timeoutMs));
         }
         if (step.retryCount != 0) {
-            node.params.emplace_back("__retryCount", std::to_string(step.retryCount));
+            graph.nodes.back().params.emplace_back("__retryCount", std::to_string(step.retryCount));
         }
-
-        // Position: lay out vertically with 100px spacing
-        node.posX = 100.0;
-        node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
-
-        graph.nodes.push_back(std::move(node));
     }
 
     // Connect sequentially: node[i] → node[i+1]

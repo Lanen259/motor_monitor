@@ -32,6 +32,9 @@ FlowRunner::FlowRunner(AutomationEngine* engine, QObject* parent)
 
 void FlowRunner::run(const FlowGraph& graph, ExecutionContext ctx)
 {
+    // 每次运行重置跨线程停止/暂停标志
+    m_stopRequested = false;
+    m_pauseRequested = false;
     ctx.stopRequested = false;
     ctx.pauseRequested = false;
 
@@ -41,18 +44,18 @@ void FlowRunner::run(const FlowGraph& graph, ExecutionContext ctx)
 
 void FlowRunner::stop()
 {
-    // stopRequested is set on the context that was passed in.
-    // Since ctx is owned by the caller, we signal via a member flag
-    // and the caller checks it in their polling loop or pre-node guard.
-    // For simplicity, this sets a flag that run() / executeGraph poll.
-    // NOTE: In the current design ctx is passed by copy, so the caller
-    // should set ctx.stopRequested themselves.  This method is a
-    // convenience that works when the runner manages the context.
+    m_stopRequested = true;
+    m_pauseRequested = false;
 }
 
 void FlowRunner::pause()
 {
-    // Same note as stop() — ctx is caller-owned.
+    m_pauseRequested = true;
+}
+
+void FlowRunner::resume()
+{
+    m_pauseRequested = false;
 }
 
 // ============================================================================
@@ -80,7 +83,10 @@ ValueProvider FlowRunner::makeValueProvider(VariableScope* variables)
 bool FlowRunner::evalCondition(const FlowNode& node, ExecutionContext& ctx,
                                 const std::string& key)
 {
-    const std::string expr = paramValue(node, key);
+    // 兼容多种参数键：面板按节点类型写入 "expression" 或 "condition"
+    std::string expr = paramValue(node, key);
+    if (expr.empty()) expr = paramValue(node, "expression");
+    if (expr.empty()) expr = paramValue(node, "condition");
     if (expr.empty()) {
         if (ctx.log) ctx.log("[FlowRunner] evalCondition: empty expression for key '" + key + "'");
         return false;
@@ -107,7 +113,8 @@ std::string FlowRunner::paramValue(const FlowNode& node, const std::string& key,
 
 void FlowRunner::handlePause(ExecutionContext& ctx)
 {
-    while (ctx.pauseRequested && !ctx.stopRequested) {
+    while ((ctx.pauseRequested || m_pauseRequested.load())
+           && !ctx.stopRequested && !m_stopRequested.load()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
         QThread::msleep(50);
     }
@@ -151,15 +158,16 @@ FlowRunResult FlowRunner::executeGraph(const FlowGraph& graph, ExecutionContext&
 
     const FlowNode* currentNode = start;
 
-    while (currentNode && stepCount < ctx.maxSteps && !result.stopped) {
+    while (currentNode && stepCount < ctx.maxSteps && !result.stopped
+           && !m_stopRequested.load()) {
         // ---- Stop / Pause / Timeout checks ----
-        if (ctx.stopRequested) {
+        if (ctx.stopRequested || m_stopRequested.load()) {
             result.stopped = true;
             break;
         }
 
         handlePause(ctx);
-        if (ctx.stopRequested) {
+        if (ctx.stopRequested || m_stopRequested.load()) {
             result.stopped = true;
             break;
         }
@@ -297,24 +305,36 @@ FlowStepResult FlowRunner::executeNode(const FlowNode& node, ExecutionContext& c
 {
     const std::string& t = node.type;
 
+    // 控制
     if (t == "SetParameter")   return execSetParameter(node, ctx);
-    if (t == "Wait" || t == "Delay") return execDelay(node, ctx);
-    if (t == "ReadParameter")  return execReadParameter(node, ctx);
     if (t == "StartMotor")     return execStartMotor(node, ctx);
     if (t == "StopMotor")      return execStopMotor(node, ctx);
-    if (t == "Assign")         return execAssign(node, ctx);
-    if (t == "If")             return execIf(node, ctx);
-    if (t == "Loop")           return execLoop(node, ctx);
-    if (t == "SubFlow")        return execSubFlow(node, ctx, parentGraph);
-    if (t == "Assert")         return execAssert(node, ctx);
-    if (t == "Log")            return execLog(node, ctx);
+    // 时序
+    if (t == "Wait" || t == "Delay") return execDelay(node, ctx);
     if (t == "WaitCondition")  return execWaitCondition(node, ctx);
+    // 逻辑（面板节点名与执行器节点名对齐）
+    if (t == "If" || t == "Switch") return execIf(node, ctx);
+    if (t == "Loop" || t == "While") return execLoop(node, ctx);
+    // 数学
+    if (t == "Assign" || t == "AssignVariable") return execAssign(node, ctx);
+    if (t == "Calculate" || t == "Math" || t == "Expression") return execCalc(node, ctx);
+    // 通信/数据
+    if (t == "ReadParameter")  return execReadParameter(node, ctx);
     if (t == "RecordData")     return execRecordData(node, ctx);
+    if (t == "Log" || t == "LogOutput") return execLog(node, ctx);
+    // 断言
+    if (t == "Assert")         return execAssert(node, ctx);
+    // 流程
+    if (t == "SubFlow")        return execSubFlow(node, ctx, parentGraph);
+    if (t == "Comment" || t == "Nop" || t == "Label") {
+        FlowStepResult r;
+        r.passed = true;
+        r.logLine = "[" + t + "] " + (node.label.empty() ? "(no-op)" : node.label);
+        return r;
+    }
 
-    // Unknown node type — skip silently for extensibility
-    FlowStepResult result;
-    result.passed = true;
-    return result;
+    // 未实现的节点类型：显式失败并给出消息，避免静默跳过掩盖问题
+    return execUnsupported(node, ctx, t);
 }
 
 // ============================================================================
@@ -387,9 +407,9 @@ FlowStepResult FlowRunner::execDelay(const FlowNode& node, ExecutionContext& ctx
     // Sleep in small chunks so we remain responsive to stop/pause
     const int chunkMs = 100;
     int remaining = delayMs;
-    while (remaining > 0 && !ctx.stopRequested) {
+    while (remaining > 0 && !ctx.stopRequested && !m_stopRequested.load()) {
         handlePause(ctx);
-        if (ctx.stopRequested) {
+        if (ctx.stopRequested || m_stopRequested.load()) {
             result.passed = false;
             result.errorMessage = "Delay interrupted by stop request";
             return result;
@@ -426,9 +446,9 @@ FlowStepResult FlowRunner::execWaitCondition(const FlowNode& node, ExecutionCont
     int pollMs = 50;  // poll interval
     int elapsedMs = 0;
 
-    while (elapsedMs < timeoutMs && !ctx.stopRequested) {
+    while (elapsedMs < timeoutMs && !ctx.stopRequested && !m_stopRequested.load()) {
         handlePause(ctx);
-        if (ctx.stopRequested) {
+        if (ctx.stopRequested || m_stopRequested.load()) {
             result.passed = false;
             result.errorMessage = "WaitCondition interrupted by stop request";
             return result;
@@ -464,9 +484,9 @@ FlowStepResult FlowRunner::execReadParameter(const FlowNode& node, ExecutionCont
     std::string paramName = paramValue(node, "name");
     std::string varName   = paramValue(node, "variable");
 
-    if (paramName.empty() || varName.empty()) {
+    if (paramName.empty()) {
         result.passed = false;
-        result.errorMessage = "ReadParameter: 'name' and 'variable' are required";
+        result.errorMessage = "ReadParameter: 'name' is required";
         return result;
     }
 
@@ -483,9 +503,9 @@ FlowStepResult FlowRunner::execReadParameter(const FlowNode& node, ExecutionCont
         }
     }
 
-    // Store result in variable scope (engine's read param callback populates
-    // the result, but since we can't access it directly we note the read occurred)
-    result.logLine = "[ReadParameter] " + paramName + " -> $" + varName;
+    result.logLine = varName.empty()
+        ? "[ReadParameter] " + paramName
+        : "[ReadParameter] " + paramName + " -> $" + varName;
     return result;
 }
 
@@ -566,6 +586,41 @@ FlowStepResult FlowRunner::execAssign(const FlowNode& node, ExecutionContext& ct
     std::ostringstream oss;
     oss << val;
     result.logLine = "[Assign] $" + varName + " = " + oss.str();
+    return result;
+}
+
+// ============================================================================
+// Calculate / Math / Expression — evaluate an expression, optionally store result
+// ============================================================================
+
+FlowStepResult FlowRunner::execCalc(const FlowNode& node, ExecutionContext& ctx)
+{
+    FlowStepResult result;
+
+    std::string expr = paramValue(node, "expression");
+    if (expr.empty()) {
+        result.passed = false;
+        result.errorMessage = "Calculate: 'expression' is required";
+        return result;
+    }
+
+    ValueProvider provider = makeValueProvider(ctx.variables);
+    auto evaluated = ExpressionEngine::evaluate(expr, provider);
+    if (!evaluated.has_value()) {
+        result.passed = false;
+        result.errorMessage = "Calculate: failed to evaluate '" + expr + "'";
+        return result;
+    }
+
+    double val = evaluated.value();
+    std::string varName = paramValue(node, "var");
+    if (!varName.empty() && ctx.variables) {
+        ctx.variables->setNumber(varName, val);
+    }
+
+    std::ostringstream oss;
+    oss << val;
+    result.logLine = "[Calculate] " + expr + " = " + oss.str();
     return result;
 }
 
@@ -689,6 +744,22 @@ FlowStepResult FlowRunner::execLog(const FlowNode& node, ExecutionContext& ctx)
         ctx.log("[FlowLog] " + message);
 
     result.logLine = "[Log] " + message;
+    return result;
+}
+
+// ============================================================================
+// Unsupported — fail loudly instead of silently skipping
+// ============================================================================
+
+FlowStepResult FlowRunner::execUnsupported(const FlowNode& node, ExecutionContext& ctx,
+                                           const std::string& type)
+{
+    FlowStepResult result;
+    result.passed = false;
+    result.errorMessage = "未实现的节点类型: '" + type + "'";
+    result.logLine = "[Unsupported] " + type;
+    if (ctx.log)
+        ctx.log("[FlowRunner] unsupported node type '" + type + "' at node '" + node.id + "'");
     return result;
 }
 

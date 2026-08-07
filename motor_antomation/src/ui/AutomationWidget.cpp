@@ -744,6 +744,9 @@ void AutomationWidget::onPause()
 
 void AutomationWidget::onResume()
 {
+    if (m_flowRunner) {
+        m_flowRunner->resume();
+    }
     if (m_engine) {
         m_engine->resume();
     }
@@ -994,12 +997,11 @@ void AutomationWidget::runFlowGraph()
 
     updateButtonStates(true, false);
 
-    // Setup FlowRunner with worker thread
-    // Create FlowRunner (no parent — we'll manage it)
+    // Setup FlowRunner with worker thread.
+    // 若上一轮仍在运行，先请求停止（stop() 现已真正生效）；旧线程结束后由
+    // finished 回调统一清理，这里只创建新一轮的 runner 与线程，避免悬垂删除。
     if (m_flowRunner) {
         m_flowRunner->stop();
-        delete m_flowRunner;
-        m_flowRunner = nullptr;
     }
 
     m_flowRunner = new FlowRunner(m_engine);
@@ -1018,8 +1020,8 @@ void AutomationWidget::runFlowGraph()
             this, &AutomationWidget::onFlowRunnerLogMessage,
             Qt::QueuedConnection);
 
-    // Create worker thread
-    auto* workerThread = new QThread(this);
+    // Create worker thread (parentless — deleted in the finished cleanup lambda)
+    auto* workerThread = new QThread();
     workerThread->setObjectName("FlowRunnerWorker");
 
     // Create worker adapter (lives on worker thread)
@@ -1044,9 +1046,18 @@ void AutomationWidget::runFlowGraph()
     m_flowRunner->moveToThread(workerThread);
     worker->moveToThread(workerThread);
 
-    // Clean up thread when done
-    connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
-    connect(workerThread, &QThread::finished, scope, &QObject::deleteLater);
+    // 线程结束后在主线程统一清理，避免 deleteLater 在已退出的事件循环中不生效
+    FlowRunner* runnerToClean = m_flowRunner;
+    connect(workerThread, &QThread::finished, this,
+            [this, workerThread, worker, scope, runnerToClean]() {
+        if (m_flowRunner == runnerToClean) {
+            m_flowRunner = nullptr;
+        }
+        delete worker;
+        delete scope;
+        delete runnerToClean;
+        delete workerThread;
+    });
 
     // Invoke run on worker thread
     workerThread->start();
@@ -1143,12 +1154,13 @@ void AutomationWidget::onFlowRunnerFinished(const FlowRunResult& result)
         m_flowCanvas->clearAllHighlights();
     }
 
-    // Quit the worker thread now that the run is complete
-    if (m_flowRunner) {
-        QThread* workerThread = m_flowRunner->thread();
+    // Quit the worker thread now that the run is complete.
+    // 不再在 UI 线程 wait()：线程结束后的清理在 runFlowGraph 注册的
+    // QThread::finished 回调中统一完成（delete worker/scope/runner/thread）。
+    if (auto* runner = qobject_cast<FlowRunner*>(sender())) {
+        QThread* workerThread = runner->thread();
         if (workerThread && workerThread != this->thread()) {
             workerThread->quit();
-            workerThread->wait(3000);
         }
     }
 

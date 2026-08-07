@@ -1643,6 +1643,27 @@ public:
 | `ReportGenerator` | 沿用，报告内容增加流程图快照 |
 | 脚本系统（第9章） | FlowGraph 预留脚本节点，绑定脚本 API（互不冲突） |
 
+#### 8.6.7 代码审核修复记录（按 md 严格审核）
+
+> 对照 `0.18` 与 `8.6` 严格审核自动化代码后，本批次已修复以下问题，并列出仍未完成的项。
+
+**已修复：**
+- 端口连线：`scene()->itemAt()` 在端口（节点边界）处返回不到节点导致连不上线 → 改为遍历节点做形状无关的端口命中检测（`outputPortHit`/`inputPortHit`），只从输出端口起拖，松开在节点主体或输入端口即可连线
+- `FlowRunner::stop()/pause()` 为空实现 → 运行无法停止/暂停（表现为"卡死"）→ 改为跨线程原子标志，UI 可正常停止/暂停/继续
+- If/Assert 参数键不匹配：面板写入 `expression`，执行器读 `condition` → 判断永远走"否"、断言永远失败 → `evalCondition` 兼容两种键
+- 节点类型与执行器不匹配：While/Calculate/AssignVariable/LogOutput/Switch 等未分发（静默跳过）→ 补齐分发；未实现类型显式失败并提示，不再静默通过
+- 表格转流程图参数键不兼容：SetParameter 多参数拆分、Wait durationMs→ms、Assert channel/min/max→条件表达式
+- 运行线程生命周期：`workerThread->wait(3000)` 阻塞 UI、线程/对象泄漏、重复运行悬垂删除 → 改为不阻塞清理 + `QThread::finished` 统一回收
+- 节点拖动时 `QGraphicsView` 事件洪泛（`invokeMethod(sc,"update",Queued)` 逐次投递）→ 改直接同步刷新并更新相连边
+
+**仍未完成（后续迭代）：**
+- 节点执行缺 For / Timer / Jump / SpeedRamp / CustomCommand / WriteRegister / SendCommand / ExportData / ExceptionHandler（运行时明确报"未实现的节点类型"）
+- 每个节点的 `onFailure` 失败策略（continue/stop/alarm/shutdown，md 8.6.4）未实现，非分支节点失败即终止
+- 循环上限：md 要求 `maxIterations`+`timeoutMinutes` 双保护，当前仅有全局 `maxSteps`(10000) 与可选 `totalTimeout`，Loop 节点的 `maxIterations` 参数未使用
+- 单步执行 / 断点（md 0.18.5）未实现
+- 子流程图（SubFlow）在画布中无法展开编辑（md 0.18.4）
+- 流程图保存到工程文件的功能未提供（md 0.18.7）
+
 ---
 
 ## 第9章：脚本系统
