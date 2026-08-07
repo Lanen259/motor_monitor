@@ -23,7 +23,7 @@
 namespace MotorStudio {
 class ChannelManager;
 class CurveWidget;
-class MultiCurveContainer;
+class VerticalPlotList;
 class DashboardWidget;
 class FaultWidget;
 class ParameterWidget;
@@ -170,7 +170,7 @@ private:
     uint64_t m_engineSubscriberId = 0;
 
     // UI components
-    MotorStudio::MultiCurveContainer *m_curveContainer;
+    MotorStudio::VerticalPlotList *m_plotList;
     MotorStudio::DashboardWidget *m_dashboardWidget;
     MotorStudio::FaultWidget *m_faultWidget;
     MotorStudio::ParameterWidget *m_paramWidget;

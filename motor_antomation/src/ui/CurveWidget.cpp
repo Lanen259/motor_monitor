@@ -1,9 +1,11 @@
 #include "CurveWidget.h"
 #include "../curve/CurveEngine.h"
+#include "../curve/TimeAxisManager.h"
 #include <QPainter>
 #include <QPaintEvent>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QToolTip>
 #include <cmath>
 #include <algorithm>
@@ -112,60 +114,99 @@ void CurveWidget::detachCurveEngine()
     m_curveEngine = nullptr;
 }
 
+void CurveWidget::setChannelTopicId(int index, uint32_t topicId)
+{
+    if (index >= 0 && index < m_channels.size()) {
+        m_channels[index].topicId = topicId;
+    }
+}
+
+void CurveWidget::setAutoPopulateChannels(bool enabled)
+{
+    m_autoPopulateChannels = enabled;
+}
+
 void CurveWidget::onPullTimer()
 {
     if (!m_curveEngine) return;
 
-    auto ids = m_curveEngine->channelIds();
-    if (ids.empty()) return;
-
     auto& registry = TopicRegistry::instance();
 
-    // Sync channels: create if new CurveEngine channels appear
-    while (static_cast<size_t>(m_channels.size()) < ids.size()) {
-        int idx = m_channels.size();
-        uint32_t tid = ids[idx];
+    if (m_autoPopulateChannels) {
+        // Legacy mode: auto-populate all engine channels
+        auto ids = m_curveEngine->channelIds();
+        if (ids.empty()) return;
 
-        ChannelDescriptor desc = registry.descriptor(tid);
-        QString name = QString::fromStdString(desc.name);
-        if (name.isEmpty()) {
-            name = QString("CH%1").arg(tid);
+        // Sync channels: create if new CurveEngine channels appear
+        while (static_cast<size_t>(m_channels.size()) < ids.size()) {
+            int idx = m_channels.size();
+            uint32_t tid = ids[idx];
+
+            ChannelDescriptor desc = registry.descriptor(tid);
+            QString name = QString::fromStdString(desc.name);
+            if (name.isEmpty()) {
+                name = QString("CH%1").arg(tid);
+            }
+
+            QColor color = Qt::cyan;
+            if (desc.color != 0 && desc.color != 0xFF888888) {
+                color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
+                               desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+            }
+
+            addChannel(name, color);
+            m_channels[idx].topicId = tid;
         }
 
-        QColor color = Qt::cyan;
-        if (desc.color != 0 && desc.color != 0xFF888888) {
-            color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
-                           desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+        // Sync existing channel names and colors from registry (WI-005: dynamic update)
+        for (size_t i = 0; i < ids.size() && i < static_cast<size_t>(m_channels.size()); ++i) {
+            uint32_t tid = ids[i];
+            auto& localCh = m_channels[i];
+
+            ChannelDescriptor desc = registry.descriptor(tid);
+            if (!desc.name.empty()) {
+                localCh.name = QString::fromStdString(desc.name);
+            }
+            if (desc.color != 0 && desc.color != 0xFF888888) {
+                localCh.color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
+                                        desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+            }
         }
 
-        addChannel(name, color);
-        m_channels[idx].topicId = tid;
-    }
+        // Pull min/max from CurveEngine channels for auto-scale
+        for (size_t i = 0; i < ids.size() && i < static_cast<size_t>(m_channels.size()); ++i) {
+            uint32_t tid = ids[i];
+            auto* ch = m_curveEngine->channel(tid);
+            if (!ch) continue;
 
-    // Sync existing channel names and colors from registry (WI-005: dynamic update)
-    for (size_t i = 0; i < ids.size() && i < static_cast<size_t>(m_channels.size()); ++i) {
-        uint32_t tid = ids[i];
-        auto& localCh = m_channels[i];
-
-        ChannelDescriptor desc = registry.descriptor(tid);
-        if (!desc.name.empty()) {
-            localCh.name = QString::fromStdString(desc.name);
+            auto range = ch->dataRange();
+            m_channels[i].minVal = range.minVal;
+            m_channels[i].maxVal = range.maxVal;
         }
-        if (desc.color != 0 && desc.color != 0xFF888888) {
-            localCh.color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
-                                    desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+    } else {
+        // Externally-managed mode (PlotCell): only update existing channels with topicIds
+        if (m_channels.isEmpty()) return;
+
+        for (int i = 0; i < m_channels.size(); ++i) {
+            auto& localCh = m_channels[i];
+            if (localCh.topicId == 0) continue;
+
+            ChannelDescriptor desc = registry.descriptor(localCh.topicId);
+            if (!desc.name.empty()) {
+                localCh.name = QString::fromStdString(desc.name);
+            }
+            if (desc.color != 0 && desc.color != 0xFF888888) {
+                localCh.color = QColor((desc.color >> 16) & 0xFF, (desc.color >> 8) & 0xFF,
+                                        desc.color & 0xFF, (desc.color >> 24) & 0xFF);
+            }
+
+            auto* ceCh = m_curveEngine->channel(localCh.topicId);
+            if (!ceCh) continue;
+
+            auto range = ceCh->dataRange();
+            localCh.minVal = range.minVal;
+            localCh.maxVal = range.maxVal;
         }
-    }
-
-    // Pull min/max from CurveEngine channels for auto-scale
-    for (size_t i = 0; i < ids.size() && i < static_cast<size_t>(m_channels.size()); ++i) {
-        uint32_t tid = ids[i];
-        auto* ch = m_curveEngine->channel(tid);
-        if (!ch) continue;
-
-        auto range = ch->dataRange();
-        m_channels[i].minVal = range.minVal;
-        m_channels[i].maxVal = range.maxVal;
     }
 
     update();
@@ -253,6 +294,75 @@ void CurveWidget::saveScreenshot(const QString& filePath)
 }
 
 // ============================================================
+// TimeAxisManager 集成 (WI-103)
+// ============================================================
+
+void CurveWidget::setTimeAxisManager(TimeAxisManager* manager)
+{
+    if (m_timeAxisManager == manager) return;
+
+    // 断开旧连接
+    if (m_timeAxisManager) {
+        disconnect(m_timeAxisManager, &TimeAxisManager::sharedRangeChanged,
+                   this, &CurveWidget::onSharedRangeChanged);
+    }
+
+    m_timeAxisManager = manager;
+
+    // 连接新管理器
+    if (m_timeAxisManager) {
+        connect(m_timeAxisManager, &TimeAxisManager::sharedRangeChanged,
+                this, &CurveWidget::onSharedRangeChanged);
+    }
+}
+
+void CurveWidget::setTimeSynced(bool sync)
+{
+    if (m_timeSynced == sync) return;
+    m_timeSynced = sync;
+
+    // 切换到同步模式时，立即采用共享时间范围
+    if (m_timeSynced && m_timeAxisManager) {
+        TimeRange range = m_timeAxisManager->sharedRange();
+        m_t0 = range.t0;
+        m_xRangeSeconds = range.xRangeSeconds;
+        update();
+    }
+}
+
+void CurveWidget::onSharedRangeChanged(uint64_t t0, double xRangeSeconds)
+{
+    // 独立模式不响应共享范围变更
+    if (!m_timeSynced) return;
+
+    // 防止反馈循环：标记为管理器更新中，不重复发射信号
+    m_updatingFromManager = true;
+
+    m_t0 = t0;
+    m_xRangeSeconds = xRangeSeconds;
+    update();
+
+    m_updatingFromManager = false;
+}
+
+void CurveWidget::notifyTimeAxisChange()
+{
+    // 防止反馈循环：如果正在响应管理器更新，不重复发射信号
+    if (m_updatingFromManager) return;
+
+    // 同步模式且有管理器：向管理器传播变更
+    if (m_timeSynced && m_timeAxisManager) {
+        m_timeAxisManager->updateSharedRange(m_t0, m_xRangeSeconds);
+        // 管理器会通过 sharedRangeChanged 信号回传更新给所有同步部件
+        // 为避免重复绘制，这里不再 emit timeAxisChanged
+        return;
+    }
+
+    // 独立模式或无管理器：发射本地信号（向后兼容）
+    emit timeAxisChanged();
+}
+
+// ============================================================
 // Paint
 // ============================================================
 
@@ -274,6 +384,15 @@ void CurveWidget::paintEvent(QPaintEvent* /*event*/)
     drawCurves(painter, plotRect);
     drawAxisLabels(painter, plotRect);
     drawLegend(painter);
+
+    // WI-104: 框选缩放矩形
+    if (m_rubberBanding && m_rubberBandRect.width() > 2 && m_rubberBandRect.height() > 2) {
+        QPen rubberPen(QColor("#2196F3"), 1.5, Qt::DashLine);
+        painter.setPen(rubberPen);
+        QColor rubberFill(32, 0, 0, 255);  // RGBA: transparent blue (#200000FF)
+        painter.setBrush(rubberFill);
+        painter.drawRect(m_rubberBandRect);
+    }
 }
 
 void CurveWidget::drawGrid(QPainter& painter, const QRect& rect)
@@ -485,12 +604,18 @@ void CurveWidget::wheelEvent(QWheelEvent* event)
     }
 
     update();
-    emit timeAxisChanged();
+    notifyTimeAxisChange();
 }
 
 void CurveWidget::mousePressEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::RightButton) {
+    if (event->button() == Qt::LeftButton) {
+        // WI-104: 左键框选缩放
+        m_rubberBanding = true;
+        m_rubberBandOrigin = event->pos();
+        m_rubberBandRect = QRect(event->pos(), QSize(0, 0));
+        setCursor(Qt::CrossCursor);
+    } else if (event->button() == Qt::RightButton) {
         m_panning = true;
         m_lastMousePos = event->pos();
         setCursor(Qt::ClosedHandCursor);
@@ -505,14 +630,201 @@ void CurveWidget::mouseMoveEvent(QMouseEvent* event)
         double dt = -delta.x() / (double)width() * m_xRangeSeconds;
         m_t0 = (m_t0 > dt * 1000000.0) ? static_cast<uint64_t>(m_t0 - dt * 1000000.0) : 0;
         update();
-        emit timeAxisChanged();
+        notifyTimeAxisChange();
+    } else if (m_rubberBanding) {
+        // WI-104: 更新框选矩形
+        m_rubberBandRect = QRect(m_rubberBandOrigin, event->pos()).normalized();
+        update();
     }
 }
 
-void CurveWidget::mouseReleaseEvent(QMouseEvent* /*event*/)
+void CurveWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    m_panning = false;
-    setCursor(Qt::ArrowCursor);
+    if (event->button() == Qt::LeftButton && m_rubberBanding) {
+        // WI-104: 完成框选缩放
+        m_rubberBanding = false;
+        setCursor(Qt::ArrowCursor);
+
+        // 忽略过小的框选（可能是误点击）
+        if (m_rubberBandRect.width() > 5 && m_rubberBandRect.height() > 5) {
+            QRect plotRect = rect().adjusted(60, 20, -20, -40);
+
+            // 将框选矩形的像素坐标转换为数据坐标
+            QPointF dataTopLeft = pixelToData(m_rubberBandRect.topLeft(), plotRect);
+            QPointF dataBottomRight = pixelToData(m_rubberBandRect.bottomRight(), plotRect);
+
+            double tMin = std::min(dataTopLeft.x(), dataBottomRight.x());
+            double tMax = std::max(dataTopLeft.x(), dataBottomRight.x());
+            double vMin = std::min(dataTopLeft.y(), dataBottomRight.y());
+            double vMax = std::max(dataTopLeft.y(), dataBottomRight.y());
+
+            // 应用缩放
+            m_t0 = static_cast<uint64_t>(m_t0 + tMin * 1000000.0);
+            m_xRangeSeconds = std::max(0.1, tMax - tMin);
+            m_yMin = static_cast<float>(vMin);
+            m_yMax = static_cast<float>(vMax);
+            m_autoScale = false;
+
+            update();
+            notifyTimeAxisChange();
+        }
+    } else if (event->button() == Qt::RightButton) {
+        m_panning = false;
+        setCursor(Qt::ArrowCursor);
+    }
+}
+
+// ============================================================
+// WI-104: 缩放交互
+// ============================================================
+
+void CurveWidget::mouseDoubleClickEvent(QMouseEvent* /*event*/)
+{
+    // 双击自动适应所有可见曲线
+    autoFit();
+}
+
+void CurveWidget::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Escape && m_rubberBanding) {
+        // Esc取消框选
+        m_rubberBanding = false;
+        m_rubberBandRect = QRect();
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
+    QWidget::keyPressEvent(event);
+}
+
+void CurveWidget::zoomIn()
+{
+    // X轴放大20%（范围乘以0.8），Y轴放大20%
+    m_xRangeSeconds = std::max(0.1, m_xRangeSeconds * 0.8);
+
+    double yRange = m_yMax - m_yMin;
+    double yCenter = (m_yMax + m_yMin) / 2.0;
+    double newHalfRange = yRange * 0.4;  // 0.8 / 2
+    m_yMin = static_cast<float>(yCenter - newHalfRange);
+    m_yMax = static_cast<float>(yCenter + newHalfRange);
+
+    m_autoScale = false;
+    update();
+    notifyTimeAxisChange();
+}
+
+void CurveWidget::zoomOut()
+{
+    // X轴缩小20%（范围乘以1.25），Y轴缩小20%
+    m_xRangeSeconds = m_xRangeSeconds * 1.25;
+
+    double yRange = m_yMax - m_yMin;
+    double yCenter = (m_yMax + m_yMin) / 2.0;
+    double newHalfRange = yRange * 0.625;  // 1.25 / 2
+    m_yMin = static_cast<float>(yCenter - newHalfRange);
+    m_yMax = static_cast<float>(yCenter + newHalfRange);
+
+    m_autoScale = false;
+    update();
+    notifyTimeAxisChange();
+}
+
+void CurveWidget::autoFit()
+{
+    // 扫描所有可见通道数据范围
+    if (m_channels.isEmpty()) {
+        m_xRangeSeconds = 10.0;
+        m_t0 = 0;
+        m_yMin = -10;
+        m_yMax = 10;
+        m_autoScale = true;
+        update();
+        return;
+    }
+
+    uint64_t tMin = UINT64_MAX;
+    uint64_t tMax = 0;
+    float vMin = 1e9f;
+    float vMax = -1e9f;
+    bool hasData = false;
+
+    for (const auto& ch : m_channels) {
+        if (!ch.visible) continue;
+
+        // CurveEngine模式：从引擎获取数据范围
+        if (m_curveEngine && ch.topicId != 0) {
+            auto* ceCh = m_curveEngine->channel(ch.topicId);
+            if (ceCh && ceCh->count() > 0) {
+                auto range = ceCh->dataRange();
+                if (tMin == UINT64_MAX || range.minTime < tMin) tMin = range.minTime;
+                if (range.maxTime > tMax) tMax = range.maxTime;
+                if (range.minVal < vMin) vMin = range.minVal;
+                if (range.maxVal > vMax) vMax = range.maxVal;
+                hasData = true;
+            }
+        }
+
+        // 传统push模式：从本地数据获取范围
+        if (!ch.data.isEmpty()) {
+            for (const auto& pt : ch.data) {
+                uint64_t ts = static_cast<uint64_t>(pt.x() * 1000000.0) + m_t0;
+                if (ts < tMin) tMin = ts;
+                if (ts > tMax) tMax = ts;
+            }
+            if (ch.minVal < vMin) vMin = ch.minVal;
+            if (ch.maxVal > vMax) vMax = ch.maxVal;
+            hasData = true;
+        }
+    }
+
+    if (!hasData) {
+        m_xRangeSeconds = 10.0;
+        m_t0 = 0;
+        m_yMin = -10;
+        m_yMax = 10;
+        m_autoScale = true;
+        update();
+        return;
+    }
+
+    // X轴：设置为数据时间段
+    if (tMax > tMin) {
+        m_t0 = tMin;
+        m_xRangeSeconds = (tMax - tMin) / 1000000.0;
+        // 留5%边距
+        m_xRangeSeconds *= 1.05;
+    } else {
+        m_t0 = tMin;
+        m_xRangeSeconds = 1.0;
+    }
+
+    m_xRangeSeconds = std::max(0.1, m_xRangeSeconds);
+
+    // Y轴：设置范围并加5%边距
+    if (vMax > vMin) {
+        float margin = (vMax - vMin) * 0.05f;
+        m_yMin = vMin - margin;
+        m_yMax = vMax + margin;
+    } else {
+        m_yMin = vMin - 1.0f;
+        m_yMax = vMax + 1.0f;
+    }
+
+    m_autoScale = true;
+    update();
+    notifyTimeAxisChange();
+}
+
+void CurveWidget::resetView()
+{
+    // 重置为默认范围
+    m_xRangeSeconds = 10.0;
+    m_t0 = 0;
+    m_yMin = 0;
+    m_yMax = 100;
+    m_autoScale = true;
+
+    update();
+    notifyTimeAxisChange();
 }
 
 } // namespace MotorStudio

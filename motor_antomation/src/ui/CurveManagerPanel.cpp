@@ -1,6 +1,7 @@
 #include "CurveManagerPanel.h"
 #include "CurveWidget.h"
-#include "MultiCurveContainer.h"
+#include "VerticalPlotList.h"
+#include "PlotCell.h"
 #include "ChannelConfigDialog.h"
 #include "../curve/CurveEngine.h"
 #include "../databus/DataBus.h"
@@ -72,6 +73,65 @@ void CurveManagerPanel::setupUi()
     connect(m_refreshBtn, &QPushButton::clicked, this, &CurveManagerPanel::refresh);
     toolbar->addWidget(m_refreshBtn);
 
+    // ---- WI-104: 缩放控制按钮 ----
+    // 添加分隔线
+    auto* sepLine = new QFrame();
+    sepLine->setFrameShape(QFrame::VLine);
+    sepLine->setStyleSheet("QFrame { color: #E0E0E0; }");
+    toolbar->addWidget(sepLine);
+
+    m_zoomInBtn = new QPushButton(tr("放大 (+)"));
+    m_zoomInBtn->setToolTip(tr("X轴和Y轴放大20%"));
+    m_zoomInBtn->setStyleSheet(
+        "QPushButton { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
+        " border-radius: 3px; padding: 3px 10px; }"
+        "QPushButton:hover { background: #E0E0E0; }"
+    );
+    connect(m_zoomInBtn, &QPushButton::clicked, this, [this]() {
+        auto* cw = currentCurveWidget();
+        if (cw) cw->zoomIn();
+    });
+    toolbar->addWidget(m_zoomInBtn);
+
+    m_zoomOutBtn = new QPushButton(tr("缩小 (-)"));
+    m_zoomOutBtn->setToolTip(tr("X轴和Y轴缩小20%"));
+    m_zoomOutBtn->setStyleSheet(
+        "QPushButton { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
+        " border-radius: 3px; padding: 3px 10px; }"
+        "QPushButton:hover { background: #E0E0E0; }"
+    );
+    connect(m_zoomOutBtn, &QPushButton::clicked, this, [this]() {
+        auto* cw = currentCurveWidget();
+        if (cw) cw->zoomOut();
+    });
+    toolbar->addWidget(m_zoomOutBtn);
+
+    m_autoFitBtn = new QPushButton(tr("适应"));
+    m_autoFitBtn->setToolTip(tr("自动适应所有可见曲线范围"));
+    m_autoFitBtn->setStyleSheet(
+        "QPushButton { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
+        " border-radius: 3px; padding: 3px 10px; }"
+        "QPushButton:hover { background: #E0E0E0; }"
+    );
+    connect(m_autoFitBtn, &QPushButton::clicked, this, [this]() {
+        auto* cw = currentCurveWidget();
+        if (cw) cw->autoFit();
+    });
+    toolbar->addWidget(m_autoFitBtn);
+
+    m_resetViewBtn = new QPushButton(tr("重置"));
+    m_resetViewBtn->setToolTip(tr("重置为默认范围 (X: 10s, Y: 自动)"));
+    m_resetViewBtn->setStyleSheet(
+        "QPushButton { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
+        " border-radius: 3px; padding: 3px 10px; }"
+        "QPushButton:hover { background: #E0E0E0; }"
+    );
+    connect(m_resetViewBtn, &QPushButton::clicked, this, [this]() {
+        auto* cw = currentCurveWidget();
+        if (cw) cw->resetView();
+    });
+    toolbar->addWidget(m_resetViewBtn);
+
     layout->addLayout(toolbar);
 
     // ---- Channel table ----
@@ -133,16 +193,18 @@ void CurveManagerPanel::setupUi()
 // External wiring
 // ============================================================
 
-void CurveManagerPanel::setCurveContainer(MultiCurveContainer* container)
+void CurveManagerPanel::setPlotList(VerticalPlotList* plotList)
 {
-    m_curveContainer = container;
-    // Populate window combo
+    m_plotList = plotList;
+    // Populate window combo using PlotCell names
     m_windowCombo->blockSignals(true);
     m_windowCombo->clear();
-    if (container) {
-        int count = container->curveWidgetCount();
+    if (plotList) {
+        int count = plotList->plotCount();
         for (int i = 0; i < count; ++i) {
-            m_windowCombo->addItem(tr("窗口 %1").arg(i + 1), i);
+            PlotCell* cell = plotList->plotAt(i);
+            QString name = cell ? cell->name() : tr("窗口 %1").arg(i + 1);
+            m_windowCombo->addItem(name, i);
         }
     }
     m_windowCombo->blockSignals(false);
@@ -156,9 +218,10 @@ void CurveManagerPanel::setCurveEngine(CurveEngine* engine)
 
 CurveWidget* CurveManagerPanel::currentCurveWidget() const
 {
-    if (!m_curveContainer) return nullptr;
+    if (!m_plotList) return nullptr;
     int idx = m_windowCombo->currentData().toInt();
-    return m_curveContainer->curveWidgetAt(idx);
+    PlotCell* cell = m_plotList->plotAt(idx);
+    return cell ? cell->curveWidget() : nullptr;
 }
 
 // ============================================================
@@ -298,14 +361,16 @@ void CurveManagerPanel::loadFromRegistry()
 
     m_table->blockSignals(false);
 
-    // Refresh window combo counts in case tabs were added/removed
-    if (m_curveContainer) {
+    // Refresh window combo counts in case plots were added/removed
+    if (m_plotList) {
         m_windowCombo->blockSignals(true);
         int prev = m_windowCombo->currentData().toInt();
         m_windowCombo->clear();
-        int count = m_curveContainer->curveWidgetCount();
+        int count = m_plotList->plotCount();
         for (int i = 0; i < count; ++i) {
-            m_windowCombo->addItem(tr("窗口 %1").arg(i + 1), i);
+            PlotCell* cell = m_plotList->plotAt(i);
+            QString name = cell ? cell->name() : tr("窗口 %1").arg(i + 1);
+            m_windowCombo->addItem(name, i);
         }
         if (prev >= 0 && prev < count) {
             m_windowCombo->setCurrentIndex(prev);
@@ -449,7 +514,7 @@ void CurveManagerPanel::onRemoveChannel(int row)
 
     if (result != QMessageBox::Yes) return;
 
-    // 1. Remove from all CurveWidgets (by matching name)
+    // 1. Remove from all PlotCell CurveWidgets (by matching name)
     applyDeleteToAllCurves(name);
 
     // 2. Remove from CurveEngine
@@ -480,15 +545,16 @@ void CurveManagerPanel::onTargetWindowChanged(int /*index*/)
 }
 
 // ============================================================
-// Helpers — propagate state to all CurveWidget instances
+// Helpers — propagate state to all PlotCell CurveWidgets
 // ============================================================
 
 void CurveManagerPanel::applyColorToAllCurves(int row, const QColor& color)
 {
-    if (!m_curveContainer) return;
+    if (!m_plotList) return;
     uint32_t tid = m_rows[row].topicId;
-    for (int i = 0; i < m_curveContainer->curveWidgetCount(); ++i) {
-        auto* cw = m_curveContainer->curveWidgetAt(i);
+    for (PlotCell* cell : m_plotList->plotWidgets()) {
+        if (!cell) continue;
+        auto* cw = cell->curveWidget();
         if (!cw) continue;
         for (int ci = 0; ci < cw->channelCount(); ++ci) {
             if (cw->channelTopicId(ci) == tid) {
@@ -502,10 +568,11 @@ void CurveManagerPanel::applyColorToAllCurves(int row, const QColor& color)
 
 void CurveManagerPanel::applyVisibilityToAllCurves(int row, bool visible)
 {
-    if (!m_curveContainer) return;
+    if (!m_plotList) return;
     uint32_t tid = m_rows[row].topicId;
-    for (int i = 0; i < m_curveContainer->curveWidgetCount(); ++i) {
-        auto* cw = m_curveContainer->curveWidgetAt(i);
+    for (PlotCell* cell : m_plotList->plotWidgets()) {
+        if (!cell) continue;
+        auto* cw = cell->curveWidget();
         if (!cw) continue;
         for (int ci = 0; ci < cw->channelCount(); ++ci) {
             if (cw->channelTopicId(ci) == tid) {
@@ -518,9 +585,10 @@ void CurveManagerPanel::applyVisibilityToAllCurves(int row, bool visible)
 
 void CurveManagerPanel::applyDeleteToAllCurves(const QString& channelName)
 {
-    if (!m_curveContainer) return;
-    for (int wi = 0; wi < m_curveContainer->curveWidgetCount(); ++wi) {
-        auto* cw = m_curveContainer->curveWidgetAt(wi);
+    if (!m_plotList) return;
+    for (PlotCell* cell : m_plotList->plotWidgets()) {
+        if (!cell) continue;
+        auto* cw = cell->curveWidget();
         if (!cw) continue;
         for (int ci = cw->channelCount() - 1; ci >= 0; --ci) {
             if (cw->channelName(ci) == channelName) {

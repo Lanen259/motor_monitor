@@ -14,6 +14,7 @@
 namespace MotorStudio {
 
 class CurveEngine;
+class TimeAxisManager;
 
 // Real-time curve rendering widget
 // Supports direct push mode (legacy) and CurveEngine pull mode (P0 target)
@@ -37,6 +38,10 @@ public:
     void attachCurveEngine(CurveEngine* engine, int fps = 30);
     void detachCurveEngine();
 
+    // Externally-managed channel topic binding (for PlotCell selective channels)
+    void setChannelTopicId(int index, uint32_t topicId);
+    void setAutoPopulateChannels(bool enabled);
+
     // Display control
     void setYAxisLabel(const QString& label) { m_yAxisLabel = label; }
     void setXAxisLabel(const QString& label) { m_xAxisLabel = label; }
@@ -48,6 +53,18 @@ public:
     uint64_t timeBase() const { return m_t0; }
     double xRangeSeconds() const { return m_xRangeSeconds; }
     void setTimeBase(uint64_t t0);
+
+    // TimeAxisManager integration (WI-103)
+    void setTimeAxisManager(TimeAxisManager* manager);
+    TimeAxisManager* timeAxisManager() const { return m_timeAxisManager; }
+    void setTimeSynced(bool sync);
+    bool isTimeSynced() const { return m_timeSynced; }
+
+    // Toolbar zoom actions (WI-104)
+    void zoomIn();
+    void zoomOut();
+    void autoFit();
+    void resetView();
 
     // Channel color
     void setChannelColor(int index, const QColor& color);
@@ -78,9 +95,12 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private slots:
     void onPullTimer();
+    void onSharedRangeChanged(uint64_t t0, double xRangeSeconds);
 
 private:
     struct Channel {
@@ -102,6 +122,9 @@ private:
     QPointF dataToPixel(const QPointF& dataPoint, const QRect& rect) const;
     QPointF pixelToData(const QPointF& pixel, const QRect& rect) const;
 
+    // Time axis change notification (WI-103: delegates to manager or emits signal)
+    void notifyTimeAxisChange();
+
     QVector<Channel> m_channels;
     QString m_yAxisLabel;
     QString m_xAxisLabel;
@@ -116,16 +139,24 @@ private:
     QPoint m_lastMousePos;
     bool m_panning;
 
+    // Rubber-band zoom (WI-104)
+    bool m_rubberBanding = false;
+    QPoint m_rubberBandOrigin;
+    QRect m_rubberBandRect;
+
     // CurveEngine pull mode
     CurveEngine* m_curveEngine = nullptr;
     QTimer* m_pullTimer = nullptr;
+    bool m_autoPopulateChannels = true;  // true = legacy auto-sync, false = externally managed
 
     // Frame timing (WI-010)
     QElapsedTimer m_frameTimer;
     double m_frameIntervalMs = 0.0;
 
-    // Downsampling: widget integrates CurveEngine::downsample() (LTTB)
-    // No longer uses manual kMaxDrawPoints truncation
+    // TimeAxisManager integration (WI-103)
+    TimeAxisManager* m_timeAxisManager = nullptr;
+    bool m_timeSynced = true;
+    bool m_updatingFromManager = false;
 };
 
 } // namespace MotorStudio

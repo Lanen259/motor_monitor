@@ -3,6 +3,8 @@ add_library(MotorStudioCurve STATIC
     CurveEngine.cpp
     CurveRenderer.h
     CurveRenderer.cpp
+    TimeAxisManager.h
+    TimeAxisManager.cpp
 )
 
 target_include_directories(MotorStudioCurve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

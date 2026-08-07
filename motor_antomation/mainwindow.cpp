@@ -4,8 +4,9 @@
 #include "databus/DataBus.h"
 #include "databus/Topic.h"
 #include "curve/CurveEngine.h"
+#include "curve/TimeAxisManager.h"
 #include "ui/CurveWidget.h"
-#include "ui/MultiCurveContainer.h"
+#include "ui/VerticalPlotList.h"
 #include "ui/DashboardWidget.h"
 #include "ui/FaultWidget.h"
 #include "ui/ChannelConfigDialog.h"
@@ -69,7 +70,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_paramManager(new MotorStudio::ParameterManager(this))
     , m_curveEngine(new MotorStudio::CurveEngine(this))
     , m_channelManager(new MotorStudio::ChannelManager(this))
-    , m_curveContainer(nullptr)
+    , m_plotList(nullptr)
     , m_dashboardWidget(nullptr)
     , m_faultWidget(nullptr)
     , m_paramWidget(nullptr)
@@ -907,19 +908,29 @@ void MainWindow::createDefaultPages()
     m_dashboardWidget->subscribeToDataBus(10);
     m_workspaceStack->addWidget(m_dashboardWidget);
 
-    // Oscilloscope / Curve page (index 1) — WI-008 Multi-Window + WI-009 Manager Panel
+    // Oscilloscope / Curve page (index 1) — WI-101 VerticalPlotList + WI-102 PlotCell + WI-009 Manager Panel
     {
-        m_curveContainer = new MotorStudio::MultiCurveContainer(m_curveEngine);
-        m_curveContainer->attachCurveEngine(m_curveEngine, 30);
+        // Initialize TimeAxisManager singleton (shared time axis for all synced plots)
+        MotorStudio::TimeAxisManager::instance();
 
+        // Create vertical plot list with no default plot (we add one below)
+        m_plotList = new MotorStudio::VerticalPlotList(m_curveEngine);
+
+        // Add the first default subplot
+        m_plotList->addPlot(tr("曲线 1"));
+
+        // Attach curve engine to all plot cells
+        m_plotList->attachCurveEngine(m_curveEngine, 30);
+
+        // Create curve manager panel and wire to plot list
         m_curveManagerPanel = new MotorStudio::CurveManagerPanel();
-        m_curveManagerPanel->setCurveContainer(m_curveContainer);
+        m_curveManagerPanel->setPlotList(m_plotList);
         m_curveManagerPanel->setCurveEngine(m_curveEngine);
 
         auto* oscSplitter = new QSplitter(Qt::Vertical);
-        oscSplitter->addWidget(m_curveContainer);
+        oscSplitter->addWidget(m_plotList);
         oscSplitter->addWidget(m_curveManagerPanel);
-        oscSplitter->setStretchFactor(0, 3);  // Curves get 75%
+        oscSplitter->setStretchFactor(0, 3);  // Plot list gets 75%
         oscSplitter->setStretchFactor(1, 1);  // Manager gets 25%
         oscSplitter->setStyleSheet("QSplitter::handle { background: #E0E0E0; }");
 
@@ -975,7 +986,7 @@ void MainWindow::refreshPropertyPanel()
     case 1: // Oscilloscope
         if (m_propOscilloscopeCurves)
             m_propOscilloscopeCurves->setText(tr("曲线窗口: %1").arg(
-                m_curveContainer ? m_curveContainer->curveWidgetCount() : 0));
+                m_plotList ? m_plotList->plotCount() : 0));
         break;
     case 4: // Settings
         if (m_propSettingsParams && m_paramManager)
