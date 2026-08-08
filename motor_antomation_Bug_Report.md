@@ -20,9 +20,10 @@
 
 | 编号 | 严重 | 状态 | 简述 |
 |------|------|------|------|
-| BUG-001 | 严重（崩溃） | 已修复 | 双击添加节点 / 编辑节点参数 → `NodeParamPanel::buildForm` 双重释放 → 段错误 | `2de36a5` |
+| BUG-001 | 严重（崩溃） | 修复不完整 | 双击添加节点 / 编辑节点参数 → `NodeParamPanel::buildForm` 双重释放 → 段错误；`2de36a5` 用 takeRow 修了 removeRow 双重释放，但"包裹段"仍有悬垂指针/堆损坏（见 BUG-004） | `2de36a5` |
 | BUG-002 | 中 | 已修复 | 端口无法连线（itemAt 边界失效），见 8.6.7 |
 | BUG-003 | 中 | 已修复 | FlowRunner stop/pause 空实现导致运行无法停止，见 8.6.7 |
+| BUG-004 | 严重（卡死） | 待修复 | 输入参数后按回车 / 编辑 If·Assert 等节点 → buildForm"参数行包删除按钮"段悬垂指针+堆损坏 → 卡死（BUG-001 残留），见 3.7 |
 
 ---
 
@@ -110,6 +111,64 @@ panel.clearNode();          // 修复后：正常清空
 2. 手动界面：双击节点库添加节点不卡死；选中节点右侧参数面板正常显示；编辑每个参数控件（输入/下拉/键值表/删除按钮/添加参数按钮）不卡死；删除某参数行后其余行正常
 3. 参数编辑能写回数据模型并能保存/加载
 4. 全量编译无错误，运行无崩溃
+
+---
+
+## 3.7 BUG-004 详细
+
+### 3.7.1 症状
+
+- 参数面板输入参数后**按下回车** → 界面卡死（无响应 / 假死）
+- 选中 **If / Assert 等带 QTextEdit 条件表达式**的节点，或走"添加参数"对话框确认，都可能触发卡死
+- 与 BUG-001 同区域（`NodeParamPanel::buildForm`），**BUG-001 的 takeRow 修复仍不彻底**，存在残留的悬垂指针/堆损坏
+
+### 3.7.2 根因（已用无头复现 + gdb 确认）
+
+`buildForm` 的「参数行包删除按钮」逻辑（`motor_antomation/src/ui/NodeParamPanel.cpp` 约 1086-1131 行）虽然把 `removeRow` 换成了 `takeRow`，但**对象所有权仍然错乱**，造成堆损坏：
+
+```cpp
+for (auto it = rowsToWrap.rbegin(); it != rowsToWrap.rend(); ++it) {
+    auto* container = new QWidget();
+    auto* hbox = new QHBoxLayout(container);
+    hbox->addWidget(it->field, 1);            // (1) 把 field 移进 container（重新父化）
+
+    auto* delBtn = new QPushButton(...);
+    hbox->addWidget(delBtn);
+    connect(delBtn, ..., onDeleteParam);
+
+    QLayoutItem* oldLabelLI = itemAt(rowIndex, LabelRole);
+    QLayoutItem* oldFieldLI = itemAt(rowIndex, FieldRole);
+    m_formLayout->takeRow(rowIndex);          // (2) 取出该行（不删除项）
+
+    delete oldLabelLI;                        // (3) ← 删除了 QLabel，但后面 insertRow(it->label,...) 复用它 → 悬垂指针
+    delete oldFieldLI;                        // (4) ← oldFieldLI 仍持有 field（field 已在 container 里）→ 删除 field 但 container 仍引用 → 双重管理
+
+    m_formLayout->insertRow(rowIndex, it->label, container);  // (5) 复用 (3) 已删除的 it->label
+}
+```
+
+具体问题：
+1. **(1)+(4)**：`hbox->addWidget(it->field)` 已把 field 重新父化进 container；`oldFieldLI`（原表单项）仍持有 field，`delete oldFieldLI` 会把 field 删掉，但 container 的布局仍引用它 → **use-after-free / 双重管理 → 堆损坏**。
+2. **(3)+(5)**：`delete oldLabelLI` 删掉了 QLabel，随后 `insertRow(it->label, ...)` 又复用该**已释放指针** → 悬垂指针。
+3. 堆损坏在随后访问/析构时触发崩溃或死循环（表现即"卡死"）。
+
+gdb 证据：`Thread 1 received signal SIGTRAP ... ntdll!RtlZeroHeap`（Windows 堆损坏检测），发生在 buildForm 构建 If 节点（QTextEdit）时。
+
+### 3.7.3 触发链路
+
+- **按回车路径**：点"+ 添加参数" → `QInputDialog::getText` 输入参数名/值 → 按回车（默认 OK）→ `onAddParamClicked` → `buildForm(*m_currentNode)` → 包裹段堆损坏 → 卡死
+- **编辑路径**：选中 If/Assert 节点（QTextEdit 表达式）→ `setNode` → `buildForm` → 包裹段堆损坏 → 卡死
+
+### 3.7.4 修复方向（供修复 AI）
+
+**根因是"运行期删行重插"这套逻辑本身的所有权管理错误**，推荐以下任选其一：
+
+1. **推荐：放弃"删行后重插"**。改为在**构建参数行时就**把 field + 删除按钮放进一个 `QHBoxLayout` container（构造时组装，运行期不再改布局结构）。删除按钮按参数 key 绑定 `onDeleteParam`，删除后整体重建即可。
+2. 若保留 takeRow 方式，必须正确转移所有权：
+   - 先 `auto row = m_formLayout->takeRow(rowIndex);`（labelItem, fieldItem 均存活）
+   - 从 fieldItem **取出 widget** 而不删除 widget（fieldItem 析构会连带删除 widget，需避免），再放入 container
+   - **不要**复用任何 `delete` 过的 label 指针；label 要么一起放回，要么重建新 QLabel
+3. 修复后必须按 3.6 验证标准全项通过，且专门验证：If/Assert（QTextEdit）、SetParameter（QLineEdit/QSpinBox）、未知类型（通用键值表）、连续 setNode/clearNode 50 次、添加参数对话框回车、删除参数按钮——均不崩溃、毫秒级。
 
 ---
 
