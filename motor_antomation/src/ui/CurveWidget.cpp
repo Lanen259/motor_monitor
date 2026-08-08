@@ -15,6 +15,9 @@
 
 namespace MotorStudio {
 
+// WI-801: point-to-line-segment distance helper (defined at end of file)
+static double pointToSegmentDistance(const QPointF& p, const QPointF& a, const QPointF& b);
+
 CurveWidget::CurveWidget(QWidget* parent)
     : QWidget(parent)
     , m_autoScale(true)
