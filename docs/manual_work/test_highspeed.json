@@ -1,0 +1,11 @@
+{
+  "name": "HighSpeedTest",
+  "description": "高速电机测试",
+  "steps": [
+    { "type": "StartMotor", "description": "启动电机", "timeoutMs": 5000 },
+    { "type": "SetParameter", "description": "设置转速", "params": [{"Speed": "3000"}], "timeoutMs": 1000 },
+    { "type": "Wait", "description": "等待稳定", "params": {"durationMs": "3000"}, "timeoutMs": 5000 },
+    { "type": "Assert", "description": "检查电流", "params": {"channel": "Ia", "min": "0.1", "max": "10.0"}, "timeoutMs": 1000 },
+    { "type": "StopMotor", "description": "停止电机", "timeoutMs": 5000 }
+  ]
+}

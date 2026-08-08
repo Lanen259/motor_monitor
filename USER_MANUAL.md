@@ -1,6 +1,6 @@
 # Motor Automation Studio — 用户使用说明书
 
-> **版本**: v1.4 | **日期**: 2026-08-07
+> **版本**: v1.5 | **日期**: 2026-08-08
 
 ---
 
@@ -242,14 +242,11 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 
 | 菜单 | 功能 |
 |------|------|
-| File → Import Project | 导入工程文件 (JSON) |
-| File → Export Project | 导出工程文件 (JSON) |
-| File → Export CSV | 导出数据为 CSV |
-| File → Save Project | 保存当前工程 |
-| File → Load Project | 加载工程文件 |
-| File → Exit | 退出程序 |
+| File → Import Project | 导入工程文件 (JSON)，快捷键 Ctrl+O |
+| File → Export Project | 导出工程文件 (JSON)，快捷键 Ctrl+S（同时承担工程保存职能） |
+| File → Exit | 退出程序，快捷键 Alt+F4 |
+| 设置(S) → 首选项 | 系统首选项设置 |
 | 设置(S) → 通道配置 | 通道配置（名称/单位/颜色/缩放） |
-| Settings → Settings | 系统设置 |
 | Help → About | 关于 |
 
 ---
@@ -303,3 +300,12 @@ Motor Automation Studio 是一款工业级电机调试与自动化测试平台�
 | 测试用例 | .json | 自动化测试脚本 |
 | 数据导出 | .csv | 波形数据导出 |
 | 测试报告 | .html / .csv | 自动化测试结果 |
+
+---
+
+## 10. 版本变更记录
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| v1.5 | 2026-08-08 | 修复波形子图在外部通道管理模式下 Y 轴自动缩放失效的缺陷(此前子图 Y 轴刻度停在极大默认值、曲线被压成一条中线);新增《电机自动化平台详细使用说明书》PDF(项目根目录,含界面截图、通信协议字节级说明、自动化测试操作与命令码参考) |
+| v1.4 | 2026-08-07 | 此前版本(见 git 历史) |

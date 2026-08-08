@@ -548,9 +548,16 @@ void CurveWidget::updateAutoScale()
 
     float globalMin = 1e9f, globalMax = -1e9f;
     for (const auto& ch : m_channels) {
-        if (!ch.visible || ch.data.isEmpty()) continue;
+        // 外部管理模式(PlotCell)下 ch.data 为空,min/max 由引擎同步,不能以 data 判空跳过
+        if (!ch.visible) continue;
         globalMin = std::min(globalMin, ch.minVal);
         globalMax = std::max(globalMax, ch.maxVal);
+    }
+
+    if (globalMin > globalMax) {
+        m_yMin = -10;
+        m_yMax = 10;
+        return;
     }
 
     if (globalMin >= globalMax) {
