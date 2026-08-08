@@ -1057,89 +1057,96 @@ void NodeParamPanel::buildForm(const FlowNode& node)
         });
     }
 
-    // --- Wrap all param rows with delete buttons ---
-    // Collect rows first, then process — avoid modifying layout during iteration
-    struct RowInfo {
-        int rowIndex;
-        QString key;
-        QWidget* field;
-        QLabel* label;
-    };
-    std::vector<RowInfo> rowsToWrap;
-    {
-        for (int i = 0; i < m_formLayout->rowCount(); ++i) {
-            QLayoutItem* labelItem = m_formLayout->itemAt(i, QFormLayout::LabelRole);
-            QLayoutItem* fieldItem = m_formLayout->itemAt(i, QFormLayout::FieldRole);
-            if (!fieldItem || !fieldItem->widget()) continue;
-
-            QWidget* field = fieldItem->widget();
-            QString key = field->property("paramKey").toString();
-            if (key.isEmpty() || key.startsWith("_") || key == "_label") continue;
-            if (qobject_cast<QTableWidget*>(field)) continue;
-            if (qobject_cast<QPushButton*>(field)) continue;
-
-            QLabel* lbl = qobject_cast<QLabel*>(labelItem ? labelItem->widget() : nullptr);
-            rowsToWrap.push_back({i, key, field, lbl});
-        }
-    }
-    // Process in reverse order to keep row indices stable
-    for (auto it = rowsToWrap.rbegin(); it != rowsToWrap.rend(); ++it) {
-        auto* container = new QWidget();
-        auto* hbox = new QHBoxLayout(container);
-        hbox->setContentsMargins(0, 0, 0, 0);
-        hbox->setSpacing(2);
-        hbox->addWidget(it->field, 1);
-
-        auto* delBtn = new QPushButton(QStringLiteral("\xc3\x97"));
-        delBtn->setFixedSize(20, 20);
-        delBtn->setToolTip(QStringLiteral("删除此参数"));
-        delBtn->setStyleSheet(R"(
-            QPushButton {
-                font-family: 'Microsoft YaHei'; font-size: 12px; font-weight: bold;
-                color: #F44336; background: transparent;
-                border: 1px solid transparent; border-radius: 3px; padding: 0;
-            }
-            QPushButton:hover {
-                background-color: #FFEBEE; border-color: #EF9A9A;
-            }
-        )");
-        hbox->addWidget(delBtn);
-
-        QString captureKey = it->key;
-        QObject::connect(delBtn, &QPushButton::clicked, this, [this, captureKey]() {
-            onDeleteParam(captureKey);
-        });
-
-        // Collect old layout items BEFORE takeRow (they become inaccessible after)
-        QLayoutItem* oldLabelLI = m_formLayout->itemAt(it->rowIndex, QFormLayout::LabelRole);
-        QLayoutItem* oldFieldLI = m_formLayout->itemAt(it->rowIndex, QFormLayout::FieldRole);
-
-        // takeRow detaches the row WITHOUT deleting items (unlike removeRow which
-        // would delete them and cause double-free). The field widget is already
-        // reparented into 'container' via hbox->addWidget above, so it won't leak.
-        m_formLayout->takeRow(it->rowIndex);
-
-        // Safe: takeRow did NOT delete these, so this is the ONLY delete (no double-free)
-        delete oldLabelLI;
-        delete oldFieldLI;
-
-        if (it->label) {
-            m_formLayout->insertRow(it->rowIndex, it->label, container);
-        } else {
-            m_formLayout->insertRow(it->rowIndex, QStringLiteral(""), container);
-        }
-    }
-
-    // --- Fixed row: "+ 添加参数" button at bottom ---
+    // --- Parameter key-value management table (replaces buggy runtime row-wrapping) ---
+    // Built here at form construction time, no runtime layout manipulation.
+    // Shows all node.params, allows add/edit/delete without QLayoutItem ownership hazards.
     {
         auto* spacer = new QLabel();
         spacer->setFixedHeight(4);
         m_formLayout->addRow(spacer);
 
-        auto* sep = new QLabel(QStringLiteral("──── 自定义参数 ────"));
+        auto* sep = new QLabel(QStringLiteral("──── 参数管理 ────"));
         sep->setStyleSheet("font-family: 'Microsoft YaHei'; font-size: 11px; color: #9E9E9E; padding: 4px 0;");
         m_formLayout->addRow(sep);
 
+        auto* paramTable = new QTableWidget(this);
+        paramTable->setColumnCount(3);
+        paramTable->setHorizontalHeaderLabels({
+            QStringLiteral("键"), QStringLiteral("值"), QStringLiteral("")});
+        paramTable->horizontalHeader()->setStretchLastSection(false);
+        paramTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+        paramTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+        paramTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+        paramTable->setColumnWidth(2, 60);
+        paramTable->verticalHeader()->setVisible(false);
+        paramTable->setMaximumHeight(160);
+        paramTable->setStyleSheet(R"(
+            QTableWidget {
+                font-family: 'Microsoft YaHei'; font-size: 12px;
+                color: #212121; background-color: #FFFFFF;
+                border: 1px solid #D0D0D0; gridline-color: #E8E8E8;
+            }
+            QTableWidget::item { padding: 2px 4px; }
+            QHeaderView::section {
+                background-color: #F5F7FA; font-size: 11px; font-weight: bold;
+                color: #616161; padding: 4px 6px; border: 1px solid #E0E0E0;
+            }
+        )");
+
+        // Populate from node.params (skip internal _-prefixed keys)
+        std::vector<std::pair<std::string, std::string>> visibleParams;
+        for (const auto& p : node.params) {
+            if (!p.first.empty() && p.first[0] != '_')
+                visibleParams.push_back(p);
+        }
+        paramTable->setRowCount(static_cast<int>(visibleParams.size()));
+        for (size_t i = 0; i < visibleParams.size(); ++i) {
+            auto* keyItem = new QTableWidgetItem(QString::fromStdString(visibleParams[i].first));
+            auto* valItem = new QTableWidgetItem(QString::fromStdString(visibleParams[i].second));
+            paramTable->setItem(static_cast<int>(i), 0, keyItem);
+            paramTable->setItem(static_cast<int>(i), 1, valItem);
+
+            // Delete button in column 2
+            auto* delBtn = new QPushButton(QStringLiteral("×"));
+            delBtn->setFixedSize(28, 22);
+            delBtn->setStyleSheet(R"(
+                QPushButton {
+                    font-size: 14px; font-weight: bold; color: #F44336;
+                    background: transparent; border: 1px solid transparent;
+                    border-radius: 3px; padding: 0;
+                }
+                QPushButton:hover { background-color: #FFEBEE; border-color: #EF9A9A; }
+            )");
+            QString captureKey = QString::fromStdString(visibleParams[i].first);
+            QObject::connect(delBtn, &QPushButton::clicked, this, [this, captureKey]() {
+                onDeleteParam(captureKey);
+            });
+            paramTable->setCellWidget(static_cast<int>(i), 2, delBtn);
+        }
+
+        QObject::connect(paramTable, &QTableWidget::cellChanged, this,
+                         [this, paramTable](int row, int col) {
+            if (m_buildingForm) return;
+            if (col == 0 || col == 1) {
+                auto* ki = paramTable->item(row, 0);
+                auto* vi = paramTable->item(row, 1);
+                if (ki && vi && m_currentNode) {
+                    std::string k = ki->text().toStdString();
+                    std::string v = vi->text().toStdString();
+                    bool found = false;
+                    for (auto& p : m_currentNode->params) {
+                        if (p.first == k) { p.second = v; found = true; break; }
+                    }
+                    if (!found && !k.empty())
+                        m_currentNode->params.emplace_back(k, v);
+                    emit paramsChanged();
+                }
+            }
+        });
+
+        m_formLayout->addRow(paramTable);
+
+        // "+ 添加参数" button
         auto* addParamBtn = new QPushButton(QStringLiteral("+ 添加参数"), this);
         addParamBtn->setStyleSheet(R"(
             QPushButton {
@@ -1153,12 +1160,8 @@ void NodeParamPanel::buildForm(const FlowNode& node)
         QObject::connect(addParamBtn, &QPushButton::clicked,
                          this, &NodeParamPanel::onAddParamClicked);
 
-        auto* btnRow = new QHBoxLayout();
-        btnRow->setContentsMargins(0, 4, 0, 4);
-        btnRow->addStretch();
-        btnRow->addWidget(addParamBtn);
-        btnRow->addStretch();
-        m_formLayout->addRow(btnRow);
+        // Button in a centered row
+        m_formLayout->addRow(QString(), addParamBtn);
     }
 
     m_buildingForm = false;
