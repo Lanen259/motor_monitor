@@ -38,7 +38,9 @@ public:
     QPainterPath shape() const override;
 
     const FlowNode& node() const { return m_node; }
+    FlowNode& mutableNode() { return m_node; }
     void setNode(const FlowNode& node);
+    void updateFromNode(const FlowNode& node);
     void setHighlighted(bool on);
 
     // Port positions for edge connection
@@ -118,6 +120,10 @@ public:
     void loadGraph(const FlowGraph& graph);
     FlowGraph toGraph() const;
 
+    // Bind to data model for 3-way sync
+    void setFlowGraph(FlowGraph* graph);
+    FlowGraph* flowGraph() const { return m_flowGraph; }
+
     // Node palette integration
     void addNodeFromPalette(const std::string& nodeType);
 
@@ -128,12 +134,16 @@ public:
     // Selection
     const FlowNodeItem* selectedNode() const;
 
+    // Refresh node item display from data model
+    void refreshNodeItem(const std::string& nodeId);
+
     // Clear canvas
     void clearCanvas();
 
 signals:
-    void nodeSelected(const std::string& nodeId);
+    void nodeSelected(const std::string& nodeId, FlowNode* node);
     void nodeDeselected();
+    void nodeParamEditRequested(const std::string& nodeId);
     void graphChanged();
 
 protected:
@@ -164,6 +174,7 @@ private:
     FlowNodeItem*       m_dragFromNode  = nullptr;
     PortType            m_dragFromPort  = PortType::Default;
     int                 m_nextNodeId    = 1;
+    FlowGraph*          m_flowGraph     = nullptr;
 
     QPointF m_lastMouseScenePos;
     QPointF m_pressScenePos;

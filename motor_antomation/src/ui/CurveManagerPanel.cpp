@@ -106,6 +106,26 @@ void CurveManagerPanel::setupUi()
     });
     toolbar->addWidget(m_zoomOutBtn);
 
+    // WI-801: 曲线平移切换按钮（与框选模式互斥）
+    m_curvePanBtn = new QPushButton(tr("曲线平移"));
+    m_curvePanBtn->setCheckable(true);
+    m_curvePanBtn->setToolTip(tr("曲线垂直平移：点击一条曲线后上下拖拽，双击恢复原位"));
+    m_curvePanBtn->setStyleSheet(
+        "QPushButton { background: #FFFFFF; color: #212121; border: 1px solid #E0E0E0;"
+        " border-radius: 3px; padding: 3px 10px; }"
+        "QPushButton:hover { background: #E0E0E0; }"
+        "QPushButton:checked { background: #2196F3; color: #FFFFFF; }"
+    );
+    connect(m_curvePanBtn, &QPushButton::toggled, this, [this](bool checked) {
+        auto* cw = currentCurveWidget();
+        if (cw) cw->setCurvePanMode(checked);
+        // 与框选模式互斥：开启平移时禁用框选
+        if (cw && checked) {
+            cw->setRubberBandEnabled(false);
+        }
+    });
+    toolbar->addWidget(m_curvePanBtn);
+
     m_autoFitBtn = new QPushButton(tr("适应"));
     m_autoFitBtn->setToolTip(tr("自动适应所有可见曲线范围"));
     m_autoFitBtn->setStyleSheet(

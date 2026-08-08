@@ -65,6 +65,9 @@ private:
     QPushButton* m_autoFitBtn = nullptr;
     QPushButton* m_resetViewBtn = nullptr;
 
+    // WI-801: 曲线平移按钮
+    QPushButton* m_curvePanBtn = nullptr;
+
     struct ChannelRow {
         TopicId topicId = 0;
         QString name;

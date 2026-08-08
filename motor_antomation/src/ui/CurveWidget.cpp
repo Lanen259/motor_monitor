@@ -10,6 +10,8 @@
 #include <cmath>
 #include <algorithm>
 #include <QDateTime>
+#include <QPoint>
+#include <QLineF>
 
 namespace MotorStudio {
 
@@ -282,6 +284,7 @@ void CurveWidget::clearData()
     for (auto& ch : m_channels) {
         ch.data.clear();
         ch.minVal = ch.maxVal = 0;
+        ch.yOffset = 0.0;  // WI-801: reset curve Y-offset
     }
     m_t0 = 0;
     update();
@@ -449,6 +452,8 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
             for (const auto& p : downsampled) {
                 double t = (p.first - m_t0) / 1000000.0;
                 QPointF pixel = dataToPixel(QPointF(t, p.second), rect);
+                // WI-801: apply vertical Y-offset (subtract because screen Y increases downward)
+                pixel.ry() -= ch.yOffset;
                 if (first) {
                     first = false;
                 } else {
@@ -466,6 +471,8 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
         bool first = true;
         for (const auto& pt : ch.data) {
             QPointF pixel = dataToPixel(pt, rect);
+            // WI-801: apply vertical Y-offset
+            pixel.ry() -= ch.yOffset;
             if (first) {
                 first = false;
             } else {
@@ -560,6 +567,21 @@ void CurveWidget::updateAutoScale()
         return;
     }
 
+    // WI-801: account for yOffset so offset curves remain visible
+    // yOffset > 0 shifts the curve UP (lower pixel Y), making data appear at higher values.
+    // yOffset < 0 shifts the curve DOWN, making data appear at lower values.
+    float rawRange = globalMax - globalMin;
+    if (rawRange > 0) {
+        QRect plotRect = rect().adjusted(60, 20, -20, -40);
+        double h = std::max(plotRect.height(), 1);
+        for (const auto& ch : m_channels) {
+            if (!ch.visible || ch.yOffset == 0.0) continue;
+            double dataOffset = ch.yOffset * rawRange / h;
+            globalMin = std::min(globalMin, static_cast<float>(ch.minVal + dataOffset));
+            globalMax = std::max(globalMax, static_cast<float>(ch.maxVal + dataOffset));
+        }
+    }
+
     if (globalMin >= globalMax) {
         m_yMin = globalMin - 1;
         m_yMax = globalMax + 1;
@@ -633,7 +655,61 @@ void CurveWidget::setRubberBandEnabled(bool enabled)
 void CurveWidget::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
-        if (m_rubberBandEnabled) {
+        // WI-801: curve pan mode — hit-test curves for vertical dragging
+        if (m_curvePanMode) {
+            QRect plotRect = rect().adjusted(60, 20, -20, -40);
+            QPointF mousePt = event->pos();
+            double bestDist = 8.0;  // hit threshold: 8px
+            int bestCh = -1;
+
+            for (int ci = 0; ci < m_channels.size(); ++ci) {
+                const auto& ch = m_channels[ci];
+                if (!ch.visible) continue;
+
+                // Get rendered points (same logic as drawCurves)
+                std::vector<QPointF> pts;
+
+                if (m_curveEngine && ch.topicId != 0) {
+                    auto* ceCh = m_curveEngine->channel(ch.topicId);
+                    if (!ceCh || ceCh->count() < 2) continue;
+                    size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
+                    auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+                    if (downsampled.size() < 2) continue;
+                    for (const auto& p : downsampled) {
+                        double t = (p.first - m_t0) / 1000000.0;
+                        QPointF pixel = dataToPixel(QPointF(t, p.second), plotRect);
+                        pixel.ry() -= ch.yOffset;  // account for offset
+                        pts.push_back(pixel);
+                    }
+                } else if (!ch.data.isEmpty()) {
+                    for (const auto& pt : ch.data) {
+                        QPointF pixel = dataToPixel(pt, plotRect);
+                        pixel.ry() -= ch.yOffset;
+                        pts.push_back(pixel);
+                    }
+                }
+
+                // Hit-test each line segment
+                for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                    double dist = pointToSegmentDistance(mousePt, pts[i], pts[i + 1]);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestCh = ci;
+                    }
+                }
+            }
+
+            if (bestCh >= 0) {
+                m_curvePanning = true;
+                m_hitChannelIndex = bestCh;
+                m_curvePanStartY = event->pos().y();
+                m_lastMousePos = event->pos();
+                setCursor(Qt::SizeVerCursor);
+                event->accept();
+            } else {
+                event->ignore();  // no curve hit, let scroll area handle it
+            }
+        } else if (m_rubberBandEnabled) {
             // 框选模式：左键拖拽框选缩放
             m_rubberBanding = true;
             m_rubberBandOrigin = event->pos();
@@ -654,7 +730,20 @@ void CurveWidget::mousePressEvent(QMouseEvent* event)
 
 void CurveWidget::mouseMoveEvent(QMouseEvent* event)
 {
-    if (m_panning) {
+    // WI-801: curve vertical panning
+    if (m_curvePanning && m_hitChannelIndex >= 0 && m_hitChannelIndex < m_channels.size()) {
+        double dy = event->pos().y() - m_lastMousePos.y();
+        m_lastMousePos = event->pos();
+        // Reverse direction: mouse down (dy > 0) -> curve up (yOffset decreases)
+        m_channels[m_hitChannelIndex].yOffset -= dy;
+
+        // Show offset tooltip
+        double yoff = m_channels[m_hitChannelIndex].yOffset;
+        QToolTip::showText(event->globalPos(),
+                           QString("偏移: %1 px").arg(yoff, 0, 'f', 1));
+        update();
+        event->accept();
+    } else if (m_panning) {
         QPoint delta = event->pos() - m_lastMousePos;
         m_lastMousePos = event->pos();
         double dt = -delta.x() / (double)width() * m_xRangeSeconds;
@@ -675,7 +764,14 @@ void CurveWidget::mouseMoveEvent(QMouseEvent* event)
 
 void CurveWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton && m_rubberBanding) {
+    // WI-801: finish curve panning
+    if (event->button() == Qt::LeftButton && m_curvePanning) {
+        m_curvePanning = false;
+        m_hitChannelIndex = -1;
+        setCursor(Qt::ArrowCursor);
+        QToolTip::hideText();
+        event->accept();
+    } else if (event->button() == Qt::LeftButton && m_rubberBanding) {
         // WI-104: 完成框选缩放
         m_rubberBanding = false;
         setCursor(Qt::ArrowCursor);
@@ -719,9 +815,55 @@ void CurveWidget::mouseReleaseEvent(QMouseEvent* event)
 // WI-104: 缩放交互
 // ============================================================
 
-void CurveWidget::mouseDoubleClickEvent(QMouseEvent* /*event*/)
+void CurveWidget::mouseDoubleClickEvent(QMouseEvent* event)
 {
-    // 双击自动适应所有可见曲线
+    // WI-801: double-click on curve line → reset that curve's yOffset
+    QRect plotRect = rect().adjusted(60, 20, -20, -40);
+    QPointF mousePt = event->pos();
+    double bestDist = 8.0;
+    int bestCh = -1;
+
+    for (int ci = 0; ci < m_channels.size(); ++ci) {
+        const auto& ch = m_channels[ci];
+        if (!ch.visible) continue;
+
+        std::vector<QPointF> pts;
+        if (m_curveEngine && ch.topicId != 0) {
+            auto* ceCh = m_curveEngine->channel(ch.topicId);
+            if (!ceCh || ceCh->count() < 2) continue;
+            size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
+            auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+            if (downsampled.size() < 2) continue;
+            for (const auto& p : downsampled) {
+                double t = (p.first - m_t0) / 1000000.0;
+                QPointF pixel = dataToPixel(QPointF(t, p.second), plotRect);
+                pixel.ry() -= ch.yOffset;
+                pts.push_back(pixel);
+            }
+        } else if (!ch.data.isEmpty()) {
+            for (const auto& pt : ch.data) {
+                QPointF pixel = dataToPixel(pt, plotRect);
+                pixel.ry() -= ch.yOffset;
+                pts.push_back(pixel);
+            }
+        }
+
+        for (size_t i = 0; i + 1 < pts.size(); ++i) {
+            double dist = pointToSegmentDistance(mousePt, pts[i], pts[i + 1]);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestCh = ci;
+            }
+        }
+    }
+
+    if (bestCh >= 0 && m_channels[bestCh].yOffset != 0.0) {
+        m_channels[bestCh].yOffset = 0.0;
+        update();
+        return;
+    }
+
+    // Default: 双击自动适应所有可见曲线
     autoFit();
 }
 
@@ -866,6 +1008,62 @@ void CurveWidget::resetView()
 
     update();
     notifyTimeAxisChange();
+}
+
+// ============================================================
+// WI-801: Curve vertical Y-offset panning accessors
+// ============================================================
+
+void CurveWidget::setCurvePanMode(bool on)
+{
+    m_curvePanMode = on;
+    if (!on) {
+        m_curvePanning = false;
+        m_hitChannelIndex = -1;
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
+}
+
+double CurveWidget::channelYOffset(int index) const
+{
+    if (index >= 0 && index < m_channels.size()) {
+        return m_channels[index].yOffset;
+    }
+    return 0.0;
+}
+
+void CurveWidget::setChannelYOffset(int index, double offset)
+{
+    if (index >= 0 && index < m_channels.size()) {
+        m_channels[index].yOffset = offset;
+        update();
+    }
+}
+
+void CurveWidget::resetChannelYOffset(int index)
+{
+    if (index >= 0 && index < m_channels.size()) {
+        m_channels[index].yOffset = 0.0;
+        update();
+    }
+}
+
+// ============================================================
+// WI-801: point-to-line-segment distance helper
+// ============================================================
+
+static double pointToSegmentDistance(const QPointF& p, const QPointF& a, const QPointF& b)
+{
+    QPointF ab = b - a;
+    QPointF ap = p - a;
+    double ab2 = QPointF::dotProduct(ab, ab);
+    if (ab2 < 1e-9) {
+        return QLineF(p, a).length();
+    }
+    double t = qBound(0.0, QPointF::dotProduct(ap, ab) / ab2, 1.0);
+    QPointF proj = a + t * ab;
+    return QLineF(p, proj).length();
 }
 
 } // namespace MotorStudio

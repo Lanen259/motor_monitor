@@ -8,6 +8,8 @@
 #include <QHeaderView>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QInputDialog>
+#include <QHBoxLayout>
 #include <algorithm>
 
 namespace MotorStudio {
@@ -92,6 +94,61 @@ static void addHintRow(QFormLayout* form, const QString& text)
 }
 
 // ============================================================
+// Add / Delete parameter handlers
+// ============================================================
+void NodeParamPanel::onAddParamClicked()
+{
+    if (!m_currentNode) return;
+
+    // Simple inline dialog using QInputDialog
+    bool ok = false;
+    QString key = QInputDialog::getText(this,
+        QStringLiteral("添加参数"),
+        QStringLiteral("参数名:"),
+        QLineEdit::Normal,
+        QString(),
+        &ok);
+    if (!ok || key.trimmed().isEmpty()) return;
+
+    QString value = QInputDialog::getText(this,
+        QStringLiteral("添加参数"),
+        QStringLiteral("参数值:"),
+        QLineEdit::Normal,
+        QString(),
+        &ok);
+    if (!ok) return;
+
+    // Check for duplicate key
+    for (const auto& p : m_currentNode->params) {
+        if (p.first == key.trimmed().toStdString()) {
+            // Overwrite existing
+            break;
+        }
+    }
+
+    // Add to node params
+    m_currentNode->params.emplace_back(key.trimmed().toStdString(), value.toStdString());
+
+    // Rebuild form
+    buildForm(*m_currentNode);
+    emit paramsChanged();
+}
+
+void NodeParamPanel::onDeleteParam(const QString& key)
+{
+    if (!m_currentNode) return;
+
+    auto& params = m_currentNode->params;
+    params.erase(std::remove_if(params.begin(), params.end(),
+        [&key](const auto& p) { return p.first == key.toStdString(); }),
+        params.end());
+
+    // Rebuild form
+    buildForm(*m_currentNode);
+    emit paramsChanged();
+}
+
+// ============================================================
 // Constructor
 // ============================================================
 NodeParamPanel::NodeParamPanel(QWidget* parent)
@@ -158,7 +215,7 @@ void NodeParamPanel::setupUi()
     layout->addWidget(m_scrollArea, 1);
 
     // --- Empty state label ---
-    m_emptyLabel = new QLabel(QStringLiteral("请选择一个节点查看参数"), this);
+    m_emptyLabel = new QLabel(QStringLiteral("选择一个节点以编辑参数"), this);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setWordWrap(true);
     m_emptyLabel->setStyleSheet(R"(
@@ -232,10 +289,26 @@ void NodeParamPanel::onAnyParamChanged()
     for (int i = 0; i < m_formLayout->rowCount(); ++i) {
         QLayoutItem* labelItem = m_formLayout->itemAt(i, QFormLayout::LabelRole);
         QLayoutItem* fieldItem = m_formLayout->itemAt(i, QFormLayout::FieldRole);
-        if (!labelItem || !fieldItem) continue;
+        if (!fieldItem) continue;
 
-        QWidget* w = fieldItem->widget();
-        if (!w) continue;
+        QWidget* container = fieldItem->widget();
+        if (!container) continue;
+
+        // Find the actual field widget (may be nested in a container with delete button)
+        QWidget* w = container;
+        if (auto* innerLayout = container->layout()) {
+            // First child widget that has a paramKey is our field
+            for (int j = 0; j < innerLayout->count(); ++j) {
+                QLayoutItem* child = innerLayout->itemAt(j);
+                if (child && child->widget()) {
+                    QString pk = child->widget()->property("paramKey").toString();
+                    if (!pk.isEmpty()) {
+                        w = child->widget();
+                        break;
+                    }
+                }
+            }
+        }
 
         QString key = w->property("paramKey").toString();
         if (key.isEmpty()) continue;
@@ -345,6 +418,63 @@ void NodeParamPanel::buildForm(const FlowNode& node)
                          this, &NodeParamPanel::onAnyParamChanged);
         QObject::connect(timeoutSpin, QOverload<int>::of(&QSpinBox::valueChanged),
                          this, &NodeParamPanel::onAnyParamChanged);
+
+        // Required field validation: pink background when empty
+        auto applyNameValidation = [nameEdit]() {
+            if (nameEdit->text().trimmed().isEmpty()) {
+                nameEdit->setStyleSheet(R"(
+                    QLineEdit {
+                        font-family: 'Microsoft YaHei'; font-size: 12px;
+                        color: #212121;
+                        background-color: #FFEBEE;
+                        border: 1px solid #EF9A9A;
+                        border-radius: 3px; padding: 4px 6px; min-height: 24px;
+                    }
+                    QLineEdit:focus { border-color: #F44336; }
+                )");
+            } else {
+                nameEdit->setStyleSheet(R"(
+                    QLineEdit {
+                        font-family: 'Microsoft YaHei'; font-size: 12px;
+                        color: #212121;
+                        background-color: #FFFFFF;
+                        border: 1px solid #D0D0D0;
+                        border-radius: 3px; padding: 4px 6px; min-height: 24px;
+                    }
+                    QLineEdit:focus { border-color: #2196F3; }
+                )");
+            }
+        };
+        QObject::connect(nameEdit, &QLineEdit::textChanged, this, applyNameValidation);
+        applyNameValidation();
+
+        auto applyValueValidation = [valueEdit]() {
+            if (valueEdit->text().trimmed().isEmpty()) {
+                valueEdit->setStyleSheet(R"(
+                    QLineEdit {
+                        font-family: 'Microsoft YaHei'; font-size: 12px;
+                        color: #212121;
+                        background-color: #FFEBEE;
+                        border: 1px solid #EF9A9A;
+                        border-radius: 3px; padding: 4px 6px; min-height: 24px;
+                    }
+                    QLineEdit:focus { border-color: #F44336; }
+                )");
+            } else {
+                valueEdit->setStyleSheet(R"(
+                    QLineEdit {
+                        font-family: 'Microsoft YaHei'; font-size: 12px;
+                        color: #212121;
+                        background-color: #FFFFFF;
+                        border: 1px solid #D0D0D0;
+                        border-radius: 3px; padding: 4px 6px; min-height: 24px;
+                    }
+                    QLineEdit:focus { border-color: #2196F3; }
+                )");
+            }
+        };
+        QObject::connect(valueEdit, &QLineEdit::textChanged, this, applyValueValidation);
+        applyValueValidation();
     }
 
     // ---- 启动电机 (StartMotor) ----
@@ -901,6 +1031,103 @@ void NodeParamPanel::buildForm(const FlowNode& node)
 
         QObject::connect(table, &QTableWidget::cellChanged, this,
                          [this](int /*row*/, int /*col*/) { onAnyParamChanged(); });
+    }
+
+    // --- Wrap all param rows with delete buttons ---
+    // Post-process: iterate rows, find fields with paramKey, wrap with delete button
+    {
+        const int rowCount = m_formLayout->rowCount();
+        for (int i = 0; i < rowCount; ++i) {
+            QLayoutItem* labelItem = m_formLayout->itemAt(i, QFormLayout::LabelRole);
+            QLayoutItem* fieldItem = m_formLayout->itemAt(i, QFormLayout::FieldRole);
+            if (!fieldItem || !fieldItem->widget()) continue;
+
+            QWidget* field = fieldItem->widget();
+            QString key = field->property("paramKey").toString();
+            if (key.isEmpty()) continue;
+
+            // Skip _label (handled separately) and table widgets
+            if (key == "_label") continue;
+            if (qobject_cast<QTableWidget*>(field)) continue;
+
+            // Already wrapped? Check if parent has a layout with multiple children
+            if (auto* parentLayout = field->parentWidget() ? field->parentWidget()->layout() : nullptr) {
+                if (parentLayout->count() > 1) continue; // already wrapped
+            }
+
+            // Wrap field in a container with delete button
+            auto* container = new QWidget();
+            auto* hbox = new QHBoxLayout(container);
+            hbox->setContentsMargins(0, 0, 0, 0);
+            hbox->setSpacing(2);
+            hbox->addWidget(field, 1);
+
+            auto* delBtn = new QPushButton(QStringLiteral("\xc3\x97"));
+            delBtn->setFixedSize(20, 20);
+            delBtn->setToolTip(QStringLiteral("删除此参数"));
+            delBtn->setStyleSheet(R"(
+                QPushButton {
+                    font-family: 'Microsoft YaHei'; font-size: 12px; font-weight: bold;
+                    color: #F44336; background: transparent;
+                    border: 1px solid transparent; border-radius: 3px; padding: 0;
+                }
+                QPushButton:hover {
+                    background-color: #FFEBEE; border-color: #EF9A9A;
+                }
+            )");
+            hbox->addWidget(delBtn);
+
+            QObject::connect(delBtn, &QPushButton::clicked, this, [this, key]() {
+                onDeleteParam(key);
+            });
+
+            // Replace the field widget with the container
+            m_formLayout->removeRow(i);
+            // Re-add the label and container at the same position
+            QLabel* lbl = qobject_cast<QLabel*>(labelItem ? labelItem->widget() : nullptr);
+            if (lbl) {
+                m_formLayout->insertRow(i, lbl, container);
+            } else {
+                m_formLayout->insertRow(i, QStringLiteral(""), container);
+            }
+            // Qt's removeRow detaches QLayoutItems from the layout;
+            // they must be freed manually to avoid leaks.
+            delete labelItem;
+            labelItem = nullptr;
+            delete fieldItem;
+            fieldItem = nullptr;
+        }
+    }
+
+    // --- Fixed row: "+ 添加参数" button at bottom ---
+    {
+        auto* spacer = new QLabel();
+        spacer->setFixedHeight(4);
+        m_formLayout->addRow(spacer);
+
+        auto* sep = new QLabel(QStringLiteral("──── 自定义参数 ────"));
+        sep->setStyleSheet("font-family: 'Microsoft YaHei'; font-size: 11px; color: #9E9E9E; padding: 4px 0;");
+        m_formLayout->addRow(sep);
+
+        auto* addParamBtn = new QPushButton(QStringLiteral("+ 添加参数"), this);
+        addParamBtn->setStyleSheet(R"(
+            QPushButton {
+                font-family: 'Microsoft YaHei'; font-size: 12px;
+                color: #2196F3; background: transparent;
+                border: 1px dashed #BBDEFB; border-radius: 4px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background-color: #E3F2FD; }
+        )");
+        QObject::connect(addParamBtn, &QPushButton::clicked,
+                         this, &NodeParamPanel::onAddParamClicked);
+
+        auto* btnRow = new QHBoxLayout();
+        btnRow->setContentsMargins(0, 4, 0, 4);
+        btnRow->addStretch();
+        btnRow->addWidget(addParamBtn);
+        btnRow->addStretch();
+        m_formLayout->addRow(btnRow);
     }
 }
 

@@ -257,7 +257,7 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*op
         descText = QString::fromStdString(m_node.id);
     }
 
-    QRectF descRect(STRIPE_WIDTH + 8, 25, NODE_WIDTH - STRIPE_WIDTH - 16, 20);
+    QRectF descRect(STRIPE_WIDTH + 8, 25, NODE_WIDTH - STRIPE_WIDTH - 16, 14);
     // Elide if too long
     QFontMetrics fmDesc(descFont);
     if (fmDesc.horizontalAdvance(descText) > descRect.width()) {
@@ -265,6 +265,34 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* /*op
                                      static_cast<int>(descRect.width()));
     }
     painter->drawText(descRect, Qt::AlignLeft | Qt::AlignVCenter, descText);
+
+    // --- Param summary (2nd line, compact key=value pairs) ---
+    QFont paramFont("Microsoft YaHei", 7);
+    painter->setFont(paramFont);
+    painter->setPen(QColor("#9E9E9E"));
+
+    QString paramSummary;
+    for (size_t i = 0; i < m_node.params.size(); ++i) {
+        const auto& kv = m_node.params[i];
+        // Skip internal params
+        if (kv.first == "__timeoutMs" || kv.first == "__retryCount") continue;
+        if (i > 0) paramSummary += QStringLiteral(", ");
+        QString val = QString::fromStdString(kv.second);
+        if (val.length() > 12) val = val.left(12) + QStringLiteral("..");
+        paramSummary += QString::fromStdString(kv.first) + QStringLiteral("=") + val;
+        if (paramSummary.length() > 50) {
+            paramSummary = paramSummary.left(47) + QStringLiteral("...");
+            break;
+        }
+    }
+    if (!paramSummary.isEmpty()) {
+        QFontMetrics fmPs(paramFont);
+        QString elided = fmPs.elidedText(paramSummary, Qt::ElideRight,
+                                         NODE_WIDTH - STRIPE_WIDTH - 16);
+        painter->drawText(QRectF(STRIPE_WIDTH + 8, 39,
+                                 NODE_WIDTH - STRIPE_WIDTH - 16, 14),
+                          Qt::AlignLeft | Qt::AlignVCenter, elided);
+    }
 
     // --- Input port dot (top center) ---
     painter->setPen(QPen(QColor("#757575"), 1.5));
@@ -308,6 +336,11 @@ void FlowNodeItem::setNode(const FlowNode& node)
 {
     m_node = node;
     update();
+}
+
+void FlowNodeItem::updateFromNode(const FlowNode& node)
+{
+    setNode(node);
 }
 
 void FlowNodeItem::setHighlighted(bool on)
@@ -433,9 +466,15 @@ QVariant FlowNodeItem::itemChange(GraphicsItemChange change, const QVariant& val
 
 void FlowNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* /*event*/)
 {
-    // Trigger editing via parent canvas
+    // Route double-click to parent canvas for param editing
     if (auto* sc = scene()) {
-        // The canvas handles this via selectionChanged
+        const QList<QGraphicsView*> views = sc->views();
+        for (auto* view : views) {
+            if (auto* canvas = qobject_cast<FlowCanvas*>(view)) {
+                canvas->nodeParamEditRequested(m_node.id);
+                break;
+            }
+        }
     }
 }
 
@@ -648,6 +687,11 @@ void FlowCanvas::loadGraph(const FlowGraph& graph)
 {
     clearCanvas();
 
+    // Bind to data model
+    // Note: setFlowGraph must be called BEFORE loadGraph if using external graph,
+    // but loadGraph can also work standalone for preview.
+    // The graph reference is used to track node IDs.
+
     std::unordered_map<std::string, FlowNodeItem*> itemMap;
     m_nextNodeId = 1;
 
@@ -677,6 +721,45 @@ void FlowCanvas::loadGraph(const FlowGraph& graph)
             auto* edgeItem = new FlowEdgeItem(edge, fromIt->second, toIt->second);
             m_scene->addItem(edgeItem);
         }
+    }
+}
+
+void FlowCanvas::setFlowGraph(FlowGraph* graph)
+{
+    m_flowGraph = graph;
+
+    // Sync m_nextNodeId from graph's highest node ID
+    if (m_flowGraph) {
+        for (const auto& node : m_flowGraph->nodes) {
+            if (node.id.size() > 1 && node.id[0] == 'n') {
+                try {
+                    int num = std::stoi(node.id.substr(1));
+                    if (num >= m_nextNodeId) {
+                        m_nextNodeId = num + 1;
+                    }
+                } catch (...) {}
+            }
+        }
+    }
+}
+
+void FlowCanvas::refreshNodeItem(const std::string& nodeId)
+{
+    if (!m_flowGraph) return;
+
+    // Find node in graph model
+    FlowNode* graphNode = nullptr;
+    for (auto& n : m_flowGraph->nodes) {
+        if (n.id == nodeId) {
+            graphNode = &n;
+            break;
+        }
+    }
+    if (!graphNode) return;
+
+    // Update the scene item
+    if (auto* item = findNodeItem(nodeId)) {
+        item->updateFromNode(*graphNode);
     }
 }
 
@@ -815,6 +898,18 @@ void FlowCanvas::addNodeFromPalette(const std::string& nodeType)
     item->setSelected(true);
 
     emit graphChanged();
+
+    // --- 3-way sync: push to FlowGraph data model ---
+    if (m_flowGraph) {
+        m_flowGraph->nodes.push_back(node);
+    }
+
+    // Auto-emit nodeSelected with pointer so param panel opens immediately
+    if (m_flowGraph && !m_flowGraph->nodes.empty()) {
+        FlowNode* graphNode = &m_flowGraph->nodes.back();
+        emit nodeSelected(node.id, graphNode);
+        emit nodeParamEditRequested(node.id);
+    }
 }
 
 // ============================================================
@@ -1009,7 +1104,17 @@ void FlowCanvas::onSceneSelectionChanged()
 {
     const FlowNodeItem* sel = selectedNode();
     if (sel) {
-        emit nodeSelected(sel->node().id);
+        FlowNode* graphNode = nullptr;
+        if (m_flowGraph) {
+            // Find the matching node in the graph by id
+            for (auto& n : m_flowGraph->nodes) {
+                if (n.id == sel->node().id) {
+                    graphNode = &n;
+                    break;
+                }
+            }
+        }
+        emit nodeSelected(sel->node().id, graphNode);
     } else {
         emit nodeDeselected();
     }

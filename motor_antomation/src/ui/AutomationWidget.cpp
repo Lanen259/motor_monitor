@@ -3,6 +3,7 @@
 #include "FlowCanvas.h"
 #include "NodeLibraryPanel.h"
 #include "NodeParamPanel.h"
+#include "VariableEditorPanel.h"
 #include "automation/FlowRunner.h"
 #include "automation/FlowGraph.h"
 #include "automation/VariableScope.h"
@@ -338,16 +339,74 @@ void AutomationWidget::setupFlowUi(QWidget* page)
     m_flowCanvas->setMinimumWidth(400);
     pageLayout->addWidget(m_flowCanvas, 1);
 
-    // --- Right: NodeParamPanel (fixed 280px) ---
+    // --- Right sidebar: NodeParamPanel + VariableEditorPanel stacked ---
+    auto* rightSidebar = new QWidget();
+    auto* rightLayout = new QVBoxLayout(rightSidebar);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(4);
+    rightSidebar->setFixedWidth(280);
+
     m_paramPanel = new NodeParamPanel();
-    m_paramPanel->setFixedWidth(280);
-    pageLayout->addWidget(m_paramPanel);
+    rightLayout->addWidget(m_paramPanel, 1);  // stretch
+
+    m_varEditor = new VariableEditorPanel();
+    m_varEditor->setMaximumHeight(200);
+    rightLayout->addWidget(m_varEditor);
+
+    pageLayout->addWidget(rightSidebar);
+
+    // --- 3-way sync: bind FlowCanvas to data model ---
+    m_flowCanvas->setFlowGraph(&m_currentFlowGraph);
 
     // --- Connections ---
+    // Node selected: pass FlowNode* directly (no findNode lookup needed)
     connect(m_flowCanvas, &FlowCanvas::nodeSelected,
-            this, &AutomationWidget::onFlowNodeSelected);
+            this, [this](const std::string& /*nodeId*/, FlowNode* node) {
+                if (m_paramPanel) {
+                    if (node) {
+                        m_paramPanel->setNode(node);
+                    } else {
+                        // Fallback: find node by id in m_currentFlowGraph
+                        // (shouldn't normally happen if 3-way sync is working)
+                        m_paramPanel->clearNode();
+                    }
+                }
+            });
     connect(m_flowCanvas, &FlowCanvas::nodeDeselected,
             this, &AutomationWidget::onFlowNodeDeselected);
+
+    // Double-click on node: focus param panel
+    connect(m_flowCanvas, &FlowCanvas::nodeParamEditRequested,
+            this, [this](const std::string& nodeId) {
+                Q_UNUSED(nodeId);
+                // Param panel is already updated via nodeSelected,
+                // but ensure it has focus / visibility
+                if (m_paramPanel) {
+                    m_paramPanel->setVisible(true);
+                }
+            });
+
+    // Params changed in panel → refresh FlowNodeItem in canvas
+    connect(m_paramPanel, &NodeParamPanel::paramsChanged,
+            this, [this]() {
+                // The FlowNode* in m_currentFlowGraph was already modified
+                // by the param panel. Now refresh the scene item.
+                if (m_flowCanvas) {
+                    const QList<QGraphicsItem*> items = m_flowCanvas->scene()->items();
+                    for (auto* item : items) {
+                        if (auto* nodeItem = dynamic_cast<FlowNodeItem*>(item)) {
+                            // Find matching node in m_currentFlowGraph
+                            for (const auto& gn : m_currentFlowGraph.nodes) {
+                                if (gn.id == nodeItem->node().id) {
+                                    nodeItem->updateFromNode(gn);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                emit m_flowCanvas->graphChanged();
+            });
 }
 
 // ============================================================
@@ -930,6 +989,8 @@ bool AutomationWidget::loadFlowGraph(const QString& jsonPath)
     // Load into canvas
     if (m_flowCanvas) {
         m_flowCanvas->loadGraph(m_currentFlowGraph);
+        // Re-bind after load (loadGraph doesn't auto-bind)
+        m_flowCanvas->setFlowGraph(&m_currentFlowGraph);
     }
 
     return true;

@@ -30,6 +30,8 @@ private:
     void buildForm(const FlowNode& node);
     void clearForm();
     void onAnyParamChanged();
+    void onAddParamClicked();
+    void onDeleteParam(const QString& key);
 
     FlowNode* m_currentNode = nullptr;
 

@@ -47,6 +47,13 @@ public:
     void setRubberBandEnabled(bool enabled);
     bool rubberBandEnabled() const { return m_rubberBandEnabled; }
 
+    // Curve vertical Y-offset panning (WI-801)
+    void setCurvePanMode(bool on);
+    bool curvePanMode() const { return m_curvePanMode; }
+    double channelYOffset(int index) const;
+    void setChannelYOffset(int index, double offset);
+    void resetChannelYOffset(int index);
+
     // Display control
     void setYAxisLabel(const QString& label) { m_yAxisLabel = label; }
     void setXAxisLabel(const QString& label) { m_xAxisLabel = label; }
@@ -115,6 +122,7 @@ private:
         bool visible = true;
         float minVal = 0;
         float maxVal = 0;
+        double yOffset = 0.0;          // WI-801: vertical pixel offset for curve panning
         uint32_t topicId = 0;   // bound CurveEngine topic (0 = none)
     };
 
@@ -149,6 +157,12 @@ private:
     bool m_rubberBandEnabled = false;  // true = left-drag does rubber-band zoom
     QPoint m_rubberBandOrigin;
     QRect m_rubberBandRect;
+
+    // Curve vertical Y-offset panning (WI-801)
+    bool m_curvePanMode = false;       // toolbar toggle: when ON, left-drag = vertical pan
+    bool m_curvePanning = false;       // currently dragging a curve vertically
+    int m_hitChannelIndex = -1;        // which curve is being panned
+    int m_curvePanStartY = 0;
 
     // CurveEngine pull mode
     CurveEngine* m_curveEngine = nullptr;

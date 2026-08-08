@@ -26,6 +26,7 @@ class FlowCanvas;
 class NodeLibraryPanel;
 class NodeParamPanel;
 class FlowRunner;
+class VariableEditorPanel;
 struct FlowRunResult;
 
 // Status per step for coloring the table rows
@@ -130,6 +131,7 @@ private:
     FlowCanvas*         m_flowCanvas    = nullptr;
     NodeLibraryPanel*   m_nodeLibrary   = nullptr;
     NodeParamPanel*     m_paramPanel    = nullptr;
+    VariableEditorPanel* m_varEditor    = nullptr;
     FlowRunner*         m_flowRunner    = nullptr;
     FlowGraph           m_currentFlowGraph;
 };
