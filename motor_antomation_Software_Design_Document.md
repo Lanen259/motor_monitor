@@ -695,6 +695,10 @@
 - 数据三方同步：`NodeParamPanel ↔ 画布节点(FlowNodeItem) ↔ m_currentFlowGraph`
 - 未实现执行的节点类型也提供通用键值参数编辑，便于后续开发调试
 
+#### 0.20.5 已知问题（Bug）
+
+- **图形化设置节点参数导致卡死**：在参数面板编辑图形化参数（输入/下拉/通用键值表）时界面假死。详见 `8.7.4`（含症状、涉及代码、疑似根因与修复方向），由另一线程 AI 修复。
+
 ---
 
 ## 第1章：参考软件设计思想分析
@@ -1806,6 +1810,31 @@ public:
 - **双击节点** → 右侧参数面板聚焦该节点（替代当前仅名称编辑弹窗）
 - 参数面板支持折叠；未选中节点时显示引导提示
 - 变量表图形化编辑面板（新增/删除/改名/改值变量），运行时可观测变量当前值
+
+#### 8.7.4 已知 Bug：图形化设置节点参数导致界面卡死
+
+> 用户反馈：在自动化流程编辑器中，选中节点后在右侧参数面板**编辑图形化参数**（输入文本 / 改下拉 / 点通用键值表 / 点"添加参数"等）时，界面卡死（假死 / 无响应）。本问题需在另一线程由 AI 修复，此处记录症状与排查线索。
+
+**症状**：编辑参数控件（QLineEdit / QSpinBox / QTextEdit / QComboBox / 通用键值 QTableWidget）任一触发即卡死。
+
+**涉及代码**：
+- `NodeParamPanel::buildForm()` / `clearForm()` / `onAnyParamChanged()`（`motor_antomation/src/ui/NodeParamPanel.cpp`）
+- 各控件信号连接：`textChanged` / `valueChanged` / `currentIndexChanged` → `onAnyParamChanged`
+- 通用键值表：`QTableWidget::cellChanged` → `onAnyParamChanged`，"添加参数"按钮 `clicked` → `insertRow + setItem + onAnyParamChanged`
+- 节点 label 编辑行：`QLineEdit`（`paramKey="_label"`）→ 写 `m_currentNode->label` 并调用 `onAnyParamChanged`
+
+**疑似根因（需运行环境复现确认，建议用调试器中断看调用栈：死循环 or 事件风暴）**：
+1. **表单构建期间信号自激**：`buildForm` 用 `setText/setValue` 填充控件时，若控件信号在 connect 之前触发、或 `onAnyParamChanged` 遍历 `m_formLayout` 的同时某个控件修改又触发新一轮表单重建，可能形成递归死循环
+2. **`onAnyParamChanged` 遍历与写入再入**：遍历 `m_formLayout` 读控件值时，遇到 `_label` 等内部键会 `params.emplace_back(...)` 追加参数；若该追加反过来又触发控件/表单更新，则死循环
+3. **通用键值表 `cellChanged` 事件风暴**：`setItem` 填充或用户编辑触发 `cellChanged` → `onAnyParamChanged`；若实现中再写回 table，会再次触发 → 无限事件
+4. **`clearForm` 删除控件时未断开挂起信号**：重建表单时 `delete widget()` 可能执行到仍连接的槽
+
+**修复方向（供修复 AI 参考）**：
+- `buildForm` 开始前置 `m_buildingForm=true`，结束置 false；`onAnyParamChanged` 开头 `if (m_buildingForm) return;`，屏蔽构建期信号自激
+- 控件连接放到 `setText/setValue` 填充**之后**
+- 内部键（`_label`）与真实参数分离，不写入 `m_currentNode->params`
+- 通用键值表改为信号位节流（如 `m_updatingTable` 标志）或断开-填充-重连
+- 修复后需验证：编辑每个节点类型的每个参数控件均不卡死；能正常增删 key-value 参数
 
 ---
 
