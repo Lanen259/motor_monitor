@@ -23,7 +23,7 @@
 | BUG-001 | 严重（崩溃） | 已修复 | 双击添加节点 / 编辑节点参数 → `NodeParamPanel::buildForm` 双重释放 → 段错误；`2de36a5` 用 takeRow 修了 removeRow 双重释放 | `2de36a5` |
 | BUG-002 | 中 | 已修复 | 端口无法连线（itemAt 边界失效），见 8.6.7 |
 | BUG-003 | 中 | 已修复 | FlowRunner stop/pause 空实现导致运行无法停止，见 8.6.7 |
-| BUG-004 | 严重（卡死） | 已修复 | 输入参数后按回车 / 编辑 If·Assert 等节点 → buildForm"参数行包删除按钮"段悬垂指针+堆损坏 → 卡死 | `HEAD` |
+| BUG-004 | 严重（卡死） | 已修复 | 输入参数后按回车 / 编辑 If·Assert 等节点 → buildForm"参数行包删除按钮"段悬垂指针+堆损坏 → 卡死 | `f44bac9` |
 
 ---
 
