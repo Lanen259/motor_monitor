@@ -1110,12 +1110,18 @@ void NodeParamPanel::buildForm(const FlowNode& node)
             onDeleteParam(captureKey);
         });
 
-        // Remove old row and re-add with container
-        QLayoutItem* oldLabelItem = m_formLayout->itemAt(it->rowIndex, QFormLayout::LabelRole);
-        QLayoutItem* oldFieldItem = m_formLayout->itemAt(it->rowIndex, QFormLayout::FieldRole);
-        m_formLayout->removeRow(it->rowIndex);
-        delete oldLabelItem;
-        delete oldFieldItem;
+        // Collect old layout items BEFORE takeRow (they become inaccessible after)
+        QLayoutItem* oldLabelLI = m_formLayout->itemAt(it->rowIndex, QFormLayout::LabelRole);
+        QLayoutItem* oldFieldLI = m_formLayout->itemAt(it->rowIndex, QFormLayout::FieldRole);
+
+        // takeRow detaches the row WITHOUT deleting items (unlike removeRow which
+        // would delete them and cause double-free). The field widget is already
+        // reparented into 'container' via hbox->addWidget above, so it won't leak.
+        m_formLayout->takeRow(it->rowIndex);
+
+        // Safe: takeRow did NOT delete these, so this is the ONLY delete (no double-free)
+        delete oldLabelLI;
+        delete oldFieldLI;
 
         if (it->label) {
             m_formLayout->insertRow(it->rowIndex, it->label, container);
