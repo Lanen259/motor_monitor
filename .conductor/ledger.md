@@ -134,3 +134,40 @@ Wave 3 (after Wave 2):
 - Status: dispatched (Wave 4)
 - File: .conductor/work/WI-016/work-order.md
 - Depends: P0-04 ✅
+
+---
+
+## Worktree Topology (2026-08-08)
+> 多 agent 并行开发的物理隔离层。每个 domain 分支有独立 checkout（git worktree），agent 只允许改自己名下的文件。归属矩阵基于 5 路耦合度分析（域间零依赖、UI 按域干净切分、mainwindow 为唯一组合根）。
+
+| Worktree path | Branch | Owner |
+|---|---|---|
+| E:/My_project/QT/Motor_Antomation (main) | master | 集成代理 (shell + hub + docs + build) |
+| E:/My_project/QT/Motor_Antomation-wt/waveform | domain/waveform | waveform agent |
+| E:/My_project/QT/Motor_Antomation-wt/automation | domain/automation | automation agent |
+| E:/My_project/QT/Motor_Antomation-wt/comms | domain/comms | comms agent |
+
+### master-owned（只在 master 上改；域 worktree 一律只读，改了必打架）
+- motor_antomation/mainwindow.h/.cpp/.ui, main.cpp
+- src/ui/DynamicWidgetFactory.*, src/ui/WidgetBindingManager.*
+- src/core/**（Message.h 的 DataPoint 是总线 ABI）、src/databus/**（DataBus/Topic.h/TopicRegistry/RingBuffer/ChannelManager）
+- src/logging/**、src/app/**
+- 根目录 *.md、*.pro、docs/、构建产物配置
+
+### domain/waveform 名下
+- src/curve/**
+- src/ui/CurveWidget、CurveManagerPanel、MultiCurveContainer、PlotCell、VerticalPlotList、HistoryReplayWidget、ChannelConfigDialog
+
+### domain/automation 名下
+- src/automation/**、src/parameter/**、src/scripting/**、src/plugin/**
+- src/ui/AutomationWidget、FlowCanvas、NodeLibraryPanel、NodeParamPanel、VariableEditorPanel
+
+### domain/comms 名下
+- src/communication/**、src/device/**、src/data/**
+- src/ui/DashboardWidget、FaultWidget
+
+### 合并纪律
+1. 域 worktree 只改自己名下文件；需要动 master-owned 文件（如新增 TopicId、改 DataPoint、接 mainwindow）→ 停下，交给集成代理在 master 上做，再 merge 回域分支。
+2. 每个域分支定期 `git merge master`，别跑偏超过 1~2 轮。
+3. 域分支合回 master 前必须：编译通过 + 单元/集成测试通过 + 冒烟。
+4. 冲突理论上只会出现在 master-owned 文件 → 由集成代理统一裁决。
