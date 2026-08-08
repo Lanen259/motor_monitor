@@ -129,7 +129,7 @@ void NodeParamPanel::onAddParamClicked()
     // Add to node params
     m_currentNode->params.emplace_back(key.trimmed().toStdString(), value.toStdString());
 
-    // Rebuild form
+    // Rebuild form (buildForm manages m_buildingForm internally)
     buildForm(*m_currentNode);
     emit paramsChanged();
 }
@@ -283,7 +283,7 @@ void NodeParamPanel::clearForm()
 // ============================================================
 void NodeParamPanel::onAnyParamChanged()
 {
-    if (!m_currentNode) return;
+    if (m_buildingForm || !m_currentNode) return;
 
     // Walk the form layout and sync values from widgets back to node params
     for (int i = 0; i < m_formLayout->rowCount(); ++i) {
@@ -297,7 +297,6 @@ void NodeParamPanel::onAnyParamChanged()
         // Find the actual field widget (may be nested in a container with delete button)
         QWidget* w = container;
         if (auto* innerLayout = container->layout()) {
-            // First child widget that has a paramKey is our field
             for (int j = 0; j < innerLayout->count(); ++j) {
                 QLayoutItem* child = innerLayout->itemAt(j);
                 if (child && child->widget()) {
@@ -312,6 +311,10 @@ void NodeParamPanel::onAnyParamChanged()
 
         QString key = w->property("paramKey").toString();
         if (key.isEmpty()) continue;
+        // Skip internal keys (not real params)
+        if (key.startsWith("_")) continue;
+        // Skip generic table (handled by its own cellChanged lambda)
+        if (qobject_cast<QTableWidget*>(w)) continue;
 
         QString value;
 
@@ -347,6 +350,7 @@ void NodeParamPanel::onAnyParamChanged()
 // ============================================================
 void NodeParamPanel::buildForm(const FlowNode& node)
 {
+    m_buildingForm = true;
     clearForm();
 
     // --- Title line: shows node type name ---
@@ -963,6 +967,7 @@ void NodeParamPanel::buildForm(const FlowNode& node)
         m_formLayout->addRow(genericLbl);
 
         auto* table = new QTableWidget(this);
+        table->setProperty("_genericTable", true);  // mark for signal throttling
         table->setColumnCount(2);
         table->setHorizontalHeaderLabels({QStringLiteral("键"),
                                           QStringLiteral("值")});
@@ -1030,72 +1035,92 @@ void NodeParamPanel::buildForm(const FlowNode& node)
         });
 
         QObject::connect(table, &QTableWidget::cellChanged, this,
-                         [this](int /*row*/, int /*col*/) { onAnyParamChanged(); });
+                         [this, table](int row, int col) {
+            if (m_buildingForm) return;
+            // Sync from table back to node params
+            if (m_currentNode && col == 1) {
+                auto* keyItem = table->item(row, 0);
+                auto* valItem = table->item(row, 1);
+                if (keyItem && valItem) {
+                    std::string key = keyItem->text().toStdString();
+                    std::string val = valItem->text().toStdString();
+                    bool found = false;
+                    for (auto& p : m_currentNode->params) {
+                        if (p.first == key) { p.second = val; found = true; break; }
+                    }
+                    if (!found && !key.empty()) {
+                        m_currentNode->params.emplace_back(key, val);
+                    }
+                }
+            }
+            emit paramsChanged();
+        });
     }
 
     // --- Wrap all param rows with delete buttons ---
-    // Post-process: iterate rows, find fields with paramKey, wrap with delete button
+    // Collect rows first, then process — avoid modifying layout during iteration
+    struct RowInfo {
+        int rowIndex;
+        QString key;
+        QWidget* field;
+        QLabel* label;
+    };
+    std::vector<RowInfo> rowsToWrap;
     {
-        const int rowCount = m_formLayout->rowCount();
-        for (int i = 0; i < rowCount; ++i) {
+        for (int i = 0; i < m_formLayout->rowCount(); ++i) {
             QLayoutItem* labelItem = m_formLayout->itemAt(i, QFormLayout::LabelRole);
             QLayoutItem* fieldItem = m_formLayout->itemAt(i, QFormLayout::FieldRole);
             if (!fieldItem || !fieldItem->widget()) continue;
 
             QWidget* field = fieldItem->widget();
             QString key = field->property("paramKey").toString();
-            if (key.isEmpty()) continue;
-
-            // Skip _label (handled separately) and table widgets
-            if (key == "_label") continue;
+            if (key.isEmpty() || key.startsWith("_") || key == "_label") continue;
             if (qobject_cast<QTableWidget*>(field)) continue;
+            if (qobject_cast<QPushButton*>(field)) continue;
 
-            // Already wrapped? Check if parent has a layout with multiple children
-            if (auto* parentLayout = field->parentWidget() ? field->parentWidget()->layout() : nullptr) {
-                if (parentLayout->count() > 1) continue; // already wrapped
-            }
-
-            // Wrap field in a container with delete button
-            auto* container = new QWidget();
-            auto* hbox = new QHBoxLayout(container);
-            hbox->setContentsMargins(0, 0, 0, 0);
-            hbox->setSpacing(2);
-            hbox->addWidget(field, 1);
-
-            auto* delBtn = new QPushButton(QStringLiteral("\xc3\x97"));
-            delBtn->setFixedSize(20, 20);
-            delBtn->setToolTip(QStringLiteral("删除此参数"));
-            delBtn->setStyleSheet(R"(
-                QPushButton {
-                    font-family: 'Microsoft YaHei'; font-size: 12px; font-weight: bold;
-                    color: #F44336; background: transparent;
-                    border: 1px solid transparent; border-radius: 3px; padding: 0;
-                }
-                QPushButton:hover {
-                    background-color: #FFEBEE; border-color: #EF9A9A;
-                }
-            )");
-            hbox->addWidget(delBtn);
-
-            QObject::connect(delBtn, &QPushButton::clicked, this, [this, key]() {
-                onDeleteParam(key);
-            });
-
-            // Replace the field widget with the container
-            m_formLayout->removeRow(i);
-            // Re-add the label and container at the same position
             QLabel* lbl = qobject_cast<QLabel*>(labelItem ? labelItem->widget() : nullptr);
-            if (lbl) {
-                m_formLayout->insertRow(i, lbl, container);
-            } else {
-                m_formLayout->insertRow(i, QStringLiteral(""), container);
+            rowsToWrap.push_back({i, key, field, lbl});
+        }
+    }
+    // Process in reverse order to keep row indices stable
+    for (auto it = rowsToWrap.rbegin(); it != rowsToWrap.rend(); ++it) {
+        auto* container = new QWidget();
+        auto* hbox = new QHBoxLayout(container);
+        hbox->setContentsMargins(0, 0, 0, 0);
+        hbox->setSpacing(2);
+        hbox->addWidget(it->field, 1);
+
+        auto* delBtn = new QPushButton(QStringLiteral("\xc3\x97"));
+        delBtn->setFixedSize(20, 20);
+        delBtn->setToolTip(QStringLiteral("删除此参数"));
+        delBtn->setStyleSheet(R"(
+            QPushButton {
+                font-family: 'Microsoft YaHei'; font-size: 12px; font-weight: bold;
+                color: #F44336; background: transparent;
+                border: 1px solid transparent; border-radius: 3px; padding: 0;
             }
-            // Qt's removeRow detaches QLayoutItems from the layout;
-            // they must be freed manually to avoid leaks.
-            delete labelItem;
-            labelItem = nullptr;
-            delete fieldItem;
-            fieldItem = nullptr;
+            QPushButton:hover {
+                background-color: #FFEBEE; border-color: #EF9A9A;
+            }
+        )");
+        hbox->addWidget(delBtn);
+
+        QString captureKey = it->key;
+        QObject::connect(delBtn, &QPushButton::clicked, this, [this, captureKey]() {
+            onDeleteParam(captureKey);
+        });
+
+        // Remove old row and re-add with container
+        QLayoutItem* oldLabelItem = m_formLayout->itemAt(it->rowIndex, QFormLayout::LabelRole);
+        QLayoutItem* oldFieldItem = m_formLayout->itemAt(it->rowIndex, QFormLayout::FieldRole);
+        m_formLayout->removeRow(it->rowIndex);
+        delete oldLabelItem;
+        delete oldFieldItem;
+
+        if (it->label) {
+            m_formLayout->insertRow(it->rowIndex, it->label, container);
+        } else {
+            m_formLayout->insertRow(it->rowIndex, QStringLiteral(""), container);
         }
     }
 
@@ -1129,6 +1154,8 @@ void NodeParamPanel::buildForm(const FlowNode& node)
         btnRow->addStretch();
         m_formLayout->addRow(btnRow);
     }
+
+    m_buildingForm = false;
 }
 
 } // namespace MotorStudio

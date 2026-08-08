@@ -34,6 +34,7 @@ private:
     void onDeleteParam(const QString& key);
 
     FlowNode* m_currentNode = nullptr;
+    bool m_buildingForm = false;   // guard against recursive signal storms
 
     QLabel*      m_titleLabel;
     QFormLayout* m_formLayout;
