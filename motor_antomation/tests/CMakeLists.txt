@@ -237,3 +237,29 @@ target_link_libraries(TestMockMcuCurve PRIVATE
 )
 
 add_test(NAME TestMockMcuCurve COMMAND TestMockMcuCurve)
+
+# === 波形域 UI 交互 / 卡死回归测试（夜间防卡死自测 Phase 2/4） ===
+# 统一规则：offscreen 平台、看门狗零违规、显式 TIMEOUT 防挂起。
+
+# CurveWidget 交互测试（W1/W2/W3/SYM）
+add_executable(TestCurveWidgetInteraction
+    unit/ui/test_curvewidget_interaction.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+
+target_include_directories(TestCurveWidgetInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+)
+
+target_link_libraries(TestCurveWidgetInteraction PRIVATE
+    Qt5::Test
+    Qt5::Widgets
+    MotorStudioUi
+)
+
+add_test(NAME TestCurveWidgetInteraction COMMAND TestCurveWidgetInteraction)
+set_tests_properties(TestCurveWidgetInteraction PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
