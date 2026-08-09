@@ -263,3 +263,54 @@ set_tests_properties(TestCurveWidgetInteraction PROPERTIES
     TIMEOUT 60
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+# HistoryReplayWidget 交互测试（WF-07/08/09/SYM）
+add_executable(TestHistoryReplayInteraction
+    unit/ui/test_historyreplay_interaction.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+
+target_include_directories(TestHistoryReplayInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+)
+
+target_link_libraries(TestHistoryReplayInteraction PRIVATE
+    Qt5::Test
+    Qt5::Widgets
+    MotorStudioUi
+)
+
+add_test(NAME TestHistoryReplayInteraction COMMAND TestHistoryReplayInteraction)
+set_tests_properties(TestHistoryReplayInteraction PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# 通用 UI 交互测试的目标模板宏（避免逐项重复 link 依赖清单）
+function(add_ui_interaction_test TGT SRC)
+    add_executable(${TGT}
+        ${SRC}
+        ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+        ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+    )
+    target_include_directories(${TGT} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/common
+    )
+    target_link_libraries(${TGT} PRIVATE
+        Qt5::Test
+        Qt5::Widgets
+        MotorStudioUi
+    )
+    add_test(NAME ${TGT} COMMAND ${TGT})
+    set_tests_properties(${TGT} PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endfunction()
+
+# MultiCurveContainer 交互测试（WF-01/02/W4）
+add_ui_interaction_test(TestMultiCurveContainerInteraction unit/ui/test_multicurvecontainer_interaction.cpp)
+
+# PlotCell 交互测试（WF-03/SYM/W4）
+add_ui_interaction_test(TestPlotCellInteraction unit/ui/test_plotcell_interaction.cpp)
