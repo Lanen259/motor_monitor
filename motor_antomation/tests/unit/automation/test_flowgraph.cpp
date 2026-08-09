@@ -3,8 +3,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
-#include "../../src/automation/FlowGraph.h"
-#include "../../src/automation/AutomationEngine.h"
+#include "../../../src/automation/FlowGraph.h"
+#include "../../../src/automation/AutomationEngine.h"
 
 using namespace MotorStudio;
 
@@ -456,16 +456,22 @@ private slots:
         QCOMPARE(QString::fromStdString(g.nodes[1].label), QString("等待2秒"));
         QCOMPARE(QString::fromStdString(g.nodes[2].label), QString("设置转速1000RPM"));
 
-        // Params should be preserved
+        // Params should be translated to the keys FlowRunner executes:
+        // Wait {durationMs}→{ms}; SetParameter {k:v}→{name,value}; Assert→{condition,message}
         QCOMPARE(static_cast<int>(g.nodes[1].params.size()), 1);
-        QCOMPARE(QString::fromStdString(g.nodes[1].params[0].first), QString("durationMs"));
+        QCOMPARE(QString::fromStdString(g.nodes[1].params[0].first), QString("ms"));
         QCOMPARE(QString::fromStdString(g.nodes[1].params[0].second), QString("2000"));
 
-        QCOMPARE(static_cast<int>(g.nodes[2].params.size()), 1);
-        QCOMPARE(QString::fromStdString(g.nodes[2].params[0].first), QString("Speed"));
+        QCOMPARE(static_cast<int>(g.nodes[2].params.size()), 2);
+        QCOMPARE(QString::fromStdString(g.nodes[2].params[0].first), QString("name"));
+        QCOMPARE(QString::fromStdString(g.nodes[2].params[0].second), QString("Speed"));
+        QCOMPARE(QString::fromStdString(g.nodes[2].params[1].first), QString("value"));
+        QCOMPARE(QString::fromStdString(g.nodes[2].params[1].second), QString("1000"));
 
-        QCOMPARE(static_cast<int>(g.nodes[3].params.size()), 3);
-        QCOMPARE(QString::fromStdString(g.nodes[3].params[0].first), QString("channel"));
+        QCOMPARE(static_cast<int>(g.nodes[3].params.size()), 2);
+        QCOMPARE(QString::fromStdString(g.nodes[3].params[0].first), QString("condition"));
+        QCOMPARE(QString::fromStdString(g.nodes[3].params[0].second),
+                 QString("channel:Speed >= 900 && channel:Speed <= 1100"));
 
         // Should have 4 edges connecting 5 nodes sequentially
         QCOMPARE(static_cast<int>(g.edges.size()), 4);

@@ -1,5 +1,5 @@
 #include <QtTest/QtTest>
-#include "../../src/databus/Topic.h"
+#include "../../../src/databus/Topic.h"
 
 using namespace MotorStudio;
 

@@ -1,5 +1,5 @@
 #include <QtTest/QtTest>
-#include "../../src/curve/CurveEngine.h"
+#include "../../../src/curve/CurveEngine.h"
 #include <thread>
 #include <vector>
 #include <atomic>

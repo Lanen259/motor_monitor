@@ -267,7 +267,7 @@ std::vector<Token> ExpressionEngine::tokenize(const std::string& expr)
                 // Single '=' is not a valid token — skip it so parser can error cleanly.
                 // We push an Eof immediately to force a parse failure.
                 ++i;
-                tokens.push_back({TokenType::Eof, ""});
+                tokens.push_back({TokenType::Error, ""});
                 return tokens;
             }
             continue;
@@ -296,7 +296,7 @@ std::vector<Token> ExpressionEngine::tokenize(const std::string& expr)
             } else {
                 // Lone '&' is invalid — skip and force parse error
                 ++i;
-                tokens.push_back({TokenType::Eof, ""});
+                tokens.push_back({TokenType::Error, ""});
                 return tokens;
             }
             continue;
@@ -307,7 +307,7 @@ std::vector<Token> ExpressionEngine::tokenize(const std::string& expr)
             } else {
                 // Lone '|' is invalid — skip and force parse error
                 ++i;
-                tokens.push_back({TokenType::Eof, ""});
+                tokens.push_back({TokenType::Error, ""});
                 return tokens;
             }
             continue;

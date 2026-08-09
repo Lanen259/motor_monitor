@@ -53,8 +53,8 @@ struct __attribute__((packed)) MotorDataPayload {
     float busCurrent;      // 4 bytes, 母线电流 (A)
     float temperature;     // 4 bytes, 温度 (°C)
     uint16_t fault;        // 2 bytes, 故障码 (bitmask)
-    // Expected: 4 + 11*4 + 2 = 50 bytes (packed);
-    // Actual size depends on compiler, validated at runtime.
+    // Expected: 4 + 10*4 + 2 = 46 bytes (packed)。
+    // 编解码双方都用 sizeof() 一致处理，具体数值由编译器决定、运行时校验。
 };
 
 // 帧解析状态

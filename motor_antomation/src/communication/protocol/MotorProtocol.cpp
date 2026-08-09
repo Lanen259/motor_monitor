@@ -58,11 +58,8 @@ MotorProtocol::MotorProtocol()
 {
     buffer_.reserve(4096);
 
-    // 运行时验证 Payload 大小（编译器相关）
-    Q_ASSERT(sizeof(MotorDataPayload) >= 50);
-    if (sizeof(MotorDataPayload) != 50) {
-        qWarning("MotorDataPayload sizeof=%zu (expected 50)", sizeof(MotorDataPayload));
-    }
+    // 运行时验证 Payload 大小（packed 布局：4 + 10*4 + 2 = 46 字节）
+    Q_ASSERT(sizeof(MotorDataPayload) == 46);
 }
 
 MotorProtocol::~MotorProtocol() = default;

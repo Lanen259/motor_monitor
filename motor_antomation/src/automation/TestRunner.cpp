@@ -25,14 +25,16 @@ TestRunner::TestRunner(AutomationEngine* engine, QObject* parent)
     d->workerThread = new QThread(this);
     d->workerThread->setObjectName("AutomationWorker");
 
-    // Move engine to worker thread (engine must have no parent, or parent must be on same thread)
-    // Since engine was created without parent, this is safe
-    engine->moveToThread(d->workerThread);
+    // engine 可为 null（见 TestRunner(nullptr) 用例）：仅在非空时迁移线程。
+    if (engine) {
+        // Move engine to worker thread (engine must have no parent, or parent must be on same thread)
+        engine->moveToThread(d->workerThread);
 
-    // Connect engine's testCompleted to our slot so we can emit runnerFinished
-    connect(engine, &AutomationEngine::testCompleted,
-            this, &TestRunner::onEngineTestCompleted,
-            Qt::QueuedConnection);
+        // Connect engine's testCompleted to our slot so we can emit runnerFinished
+        connect(engine, &AutomationEngine::testCompleted,
+                this, &TestRunner::onEngineTestCompleted,
+                Qt::QueuedConnection);
+    }
 
     // Start the worker thread's event loop
     d->workerThread->start();
@@ -40,10 +42,18 @@ TestRunner::TestRunner(AutomationEngine* engine, QObject* parent)
 
 TestRunner::~TestRunner()
 {
-    // Move engine back to current thread before quitting worker,
-    // preventing "QObject destroyed in wrong thread" warnings.
+    // Move engine back to the calling thread so the owner can destroy it safely.
+    // QObject::moveToThread must be invoked from the thread that OWNS the object
+    // (the worker thread here), so we run the move-back on the engine's own thread
+    // via a blocking queued call. Calling it from the destructor's thread directly
+    // is a no-op + "not the object's thread" warning, and leaves the engine bound
+    // to a QThread that is about to be deleted → segfault.
     if (d->engine && d->workerThread && d->workerThread->isRunning()) {
-        d->engine->moveToThread(QThread::currentThread());
+        QObject* engine = d->engine;
+        QThread* destThread = QThread::currentThread();
+        QMetaObject::invokeMethod(d->engine, [engine, destThread]() {
+            engine->moveToThread(destThread);
+        }, Qt::BlockingQueuedConnection);
     }
     // Graceful shutdown of worker thread
     if (d->workerThread) {
@@ -61,7 +71,11 @@ void TestRunner::runAsync(const TestCase& testCase)
 
     if (!d->engine) {
         qWarning() << "TestRunner: No engine set";
-        emit runnerFinished(TestResult{false, "", "No engine", -1, std::chrono::milliseconds(0), {}});
+        // 异步投递失败结果：runAsync 的契约是"结果经信号后续送达"，
+        // 同步发射会让调用方的 QSignalSpy::wait() 错过信号。
+        QMetaObject::invokeMethod(this, [this]() {
+            emit runnerFinished(TestResult{false, "", "No engine", -1, std::chrono::milliseconds(0), {}});
+        }, Qt::QueuedConnection);
         return;
     }
 

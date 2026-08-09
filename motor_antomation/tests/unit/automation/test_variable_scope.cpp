@@ -1,7 +1,12 @@
 #include <QtTest/QtTest>
 #include <QThread>
 #include <atomic>
-#include "../../src/automation/VariableScope.h"
+#include <string>
+#include "../../../src/automation/VariableScope.h"
+
+// variableChanged 信号参数是 std::string：QSignalSpy 走元对象系统捕获参数，
+// 需要向 Qt 注册该类型（AUTOMOC 会把此宏喂给 moc）
+Q_DECLARE_METATYPE(std::string)
 
 using namespace MotorStudio;
 
@@ -13,6 +18,11 @@ class TestVariableScope : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        qRegisterMetaType<std::string>("std::string");
+    }
+
     // ------------------------------------------------------------------------
     // Set/get Number
     // ------------------------------------------------------------------------
