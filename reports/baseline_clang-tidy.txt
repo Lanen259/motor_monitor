@@ -1,0 +1,197 @@
+1 warning generated.
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\communication\transport\SerialTransport.cpp:22:5: warning: Call to virtual method 'SerialTransport::close' during destruction bypasses virtual dispatch [clang-analyzer-optin.cplusplus.VirtualCall]
+   22 |     close();
+      |     ^~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\communication\transport\SerialTransport.cpp:22:5: note: Call to virtual method 'SerialTransport::close' during destruction bypasses virtual dispatch
+   22 |     close();
+      |     ^~~~~~~
+1 warning generated.
+2 warnings generated.
+D:/Program_flies/qt_creat/APP/5.14.2/mingw73_32/include/QtCore/qobjectdefs.h:525:9: warning: Potential memory leak [clang-analyzer-cplusplus.NewDeleteLeaks]
+  525 |         return invokeMethodImpl(context,
+      |         ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:67:9: note: Assuming field 'running' is false
+   67 |     if (d->running) {
+      |         ^~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:67:5: note: Taking false branch
+   67 |     if (d->running) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:72:9: note: Assuming field 'engine' is null
+   72 |     if (!d->engine) {
+      |         ^~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:72:5: note: Taking true branch
+   72 |     if (!d->engine) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:76:9: note: Calling 'QMetaObject::invokeMethod'
+   76 |         QMetaObject::invokeMethod(this, [this]() {
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   77 |             emit runnerFinished(TestResult{false, "", "No engine", -1, std::chrono::milliseconds(0), {}});
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   78 |         }, Qt::QueuedConnection);
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~
+D:/Program_flies/qt_creat/APP/5.14.2/mingw73_32/include/QtCore/qobjectdefs.h:526:33: note: Memory is allocated
+  526 |                                 new QtPrivate::QFunctorSlotObjectWithNoArgs<Func, decltype(function())>(std::move(function)),
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+D:/Program_flies/qt_creat/APP/5.14.2/mingw73_32/include/QtCore/qobjectdefs.h:525:9: note: Potential memory leak
+  525 |         return invokeMethodImpl(context,
+      |         ^
+1 warning generated.
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:150:9: warning: Address of stack memory associated with local variable 'defaultScope' is still referred to by the stack variable 'ctx' upon returning to the caller.  This will be a dangling reference [clang-analyzer-core.StackAddressEscape]
+  150 |         return result;
+      |         ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:41:19: note: Calling 'FlowRunner::executeGraph'
+   41 |     auto result = executeGraph(graph, ctx);
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:138:10: note: 'localScope' is null
+  138 |     if (!localScope) {
+      |          ^~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:138:5: note: Taking true branch
+  138 |     if (!localScope) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:139:13: note: Assuming field 'variables' is null
+  139 |         if (ctx.variables)
+      |             ^~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:139:9: note: Taking false branch
+  139 |         if (ctx.variables)
+      |         ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:148:9: note: Assuming 'start' is null
+  148 |     if (!start) {
+      |         ^~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:148:5: note: Taking true branch
+  148 |     if (!start) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\FlowRunner.cpp:150:9: note: Address of stack memory associated with local variable 'defaultScope' is still referred to by the stack variable 'ctx' upon returning to the caller.  This will be a dangling reference
+  137 |     VariableScope defaultScope;
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  138 |     if (!localScope) {
+  139 |         if (ctx.variables)
+  140 |             defaultScope.setParentScope(ctx.variables);
+  141 |         localScope = &defaultScope;
+  142 |     }
+  143 |     VariableScope* savedVars = ctx.variables;
+  144 |     ctx.variables = localScope;
+  145 | 
+  146 |     // Find the entry point
+  147 |     const FlowNode* start = graph.startNode();
+  148 |     if (!start) {
+  149 |         result.errorMessage = "Flow graph has no start node";
+  150 |         return result;
+      |         ^
+1 warning generated.
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\AutomationWidget.cpp:408:22: warning: Called C++ object pointer is null [clang-analyzer-core.CallAndMessage]
+  408 |                 emit m_flowCanvas->graphChanged();
+      |                      ^~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\AutomationWidget.cpp:394:21: note: Assuming field 'm_flowCanvas' is null
+  394 |                 if (m_flowCanvas) {
+      |                     ^~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\AutomationWidget.cpp:394:17: note: Taking false branch
+  394 |                 if (m_flowCanvas) {
+      |                 ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\AutomationWidget.cpp:408:22: note: Called C++ object pointer is null
+  408 |                 emit m_flowCanvas->graphChanged();
+      |                      ^~~~~~~~~~~~
+4 warnings generated.
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:666:5: warning: Variable 'x' with floating point type 'qreal' should not be used as a loop counter [clang-analyzer-security.FloatLoopCounter]
+  666 |     for (qreal x = left; x <= right; x += gridSize) {
+      |     ^                    ~           ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:666:5: note: Variable 'x' with floating point type 'qreal' should not be used as a loop counter
+  666 |     for (qreal x = left; x <= right; x += gridSize) {
+      |     ^                    ~           ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:669:5: warning: Variable 'y' with floating point type 'qreal' should not be used as a loop counter [clang-analyzer-security.FloatLoopCounter]
+  669 |     for (qreal y = top; y <= bottom; y += gridSize) {
+      |     ^                   ~            ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:669:5: note: Variable 'y' with floating point type 'qreal' should not be used as a loop counter
+  669 |     for (qreal y = top; y <= bottom; y += gridSize) {
+      |     ^                   ~            ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:675:5: warning: Variable 'x' with floating point type 'qreal' should not be used as a loop counter [clang-analyzer-security.FloatLoopCounter]
+  675 |     for (qreal x = left; x <= right; x += gridSize) {
+      |     ^                    ~           ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:675:5: note: Variable 'x' with floating point type 'qreal' should not be used as a loop counter
+  675 |     for (qreal x = left; x <= right; x += gridSize) {
+      |     ^                    ~           ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:676:9: warning: Variable 'y' with floating point type 'qreal' should not be used as a loop counter [clang-analyzer-security.FloatLoopCounter]
+  676 |         for (qreal y = top; y <= bottom; y += gridSize) {
+      |         ^                   ~            ~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\FlowCanvas.cpp:676:9: note: Variable 'y' with floating point type 'qreal' should not be used as a loop counter
+  676 |         for (qreal y = top; y <= bottom; y += gridSize) {
+      |         ^                   ~            ~
+1 warning generated.
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\NodeParamPanel.cpp:290:22: warning: Value stored to 'labelItem' during its initialization is never read [clang-analyzer-deadcode.DeadStores]
+  290 |         QLayoutItem* labelItem = m_formLayout->itemAt(i, QFormLayout::LabelRole);
+      |                      ^~~~~~~~~   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\NodeParamPanel.cpp:290:22: note: Value stored to 'labelItem' during its initialization is never read
+  290 |         QLayoutItem* labelItem = m_formLayout->itemAt(i, QFormLayout::LabelRole);
+      |                      ^~~~~~~~~   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 warning generated.
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:93:1: warning: Potential leak of memory pointed to by 'form' [clang-analyzer-cplusplus.NewDeleteLeaks]
+   93 | }
+      | ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:104:9: note: Assuming field 'm_mgr' is non-null
+  104 |     if (!m_mgr) return;
+      |         ^~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:104:5: note: Taking false branch
+  104 |     if (!m_mgr) return;
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:106:9: note: Assuming the condition is true
+  106 |     if (!path.isEmpty()) {
+      |         ^~~~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:106:5: note: Taking true branch
+  106 |     if (!path.isEmpty()) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:108:9: note: Calling 'ParameterWidget::refresh'
+  108 |         refresh();
+      |         ^~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:53:10: note: Field 'm_mgr' is non-null
+   53 |     if (!m_mgr) return;
+      |          ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:53:5: note: Taking false branch
+   53 |     if (!m_mgr) return;
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:57:9: note: Assuming the condition is false
+   57 |     if (m_contentWidget->layout()) {
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:57:5: note: Taking false branch
+   57 |     if (m_contentWidget->layout()) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:65:18: note: Memory is allocated
+   65 |     auto* form = new QFormLayout(m_contentWidget);
+      |                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:68:21: note: Assuming the condition is false
+   68 |     for (int i = 0; i < params.size(); ++i) {
+      |                     ^~~~~~~~~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:68:5: note: Loop condition is false. Execution continues on line 68
+   68 |     for (int i = 0; i < params.size(); ++i) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\ui\ParameterWidget.cpp:93:1: note: Potential leak of memory pointed to by 'form'
+   93 | }
+      | ^
+1 warning generated.
+2 warnings generated.
+D:/Program_flies/qt_creat/APP/5.14.2/mingw73_32/include/QtCore/qobjectdefs.h:525:9: warning: Potential memory leak [clang-analyzer-cplusplus.NewDeleteLeaks]
+  525 |         return invokeMethodImpl(context,
+      |         ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:67:9: note: Assuming field 'running' is false
+   67 |     if (d->running) {
+      |         ^~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:67:5: note: Taking false branch
+   67 |     if (d->running) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:72:9: note: Assuming field 'engine' is null
+   72 |     if (!d->engine) {
+      |         ^~~~~~~~~~
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:72:5: note: Taking true branch
+   72 |     if (!d->engine) {
+      |     ^
+E:\My_project\QT\Motor_Antomation\motor_antomation\src\automation\TestRunner.cpp:76:9: note: Calling 'QMetaObject::invokeMethod'
+   76 |         QMetaObject::invokeMethod(this, [this]() {
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   77 |             emit runnerFinished(TestResult{false, "", "No engine", -1, std::chrono::milliseconds(0), {}});
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   78 |         }, Qt::QueuedConnection);
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~
+D:/Program_flies/qt_creat/APP/5.14.2/mingw73_32/include/QtCore/qobjectdefs.h:526:33: note: Memory is allocated
+  526 |                                 new QtPrivate::QFunctorSlotObjectWithNoArgs<Func, decltype(function())>(std::move(function)),
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+D:/Program_flies/qt_creat/APP/5.14.2/mingw73_32/include/QtCore/qobjectdefs.h:525:9: note: Potential memory leak
+  525 |         return invokeMethodImpl(context,
+      |         ^

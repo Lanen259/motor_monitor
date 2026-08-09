@@ -57,7 +57,9 @@ echo [STATIC] ==== 1/3 cppcheck ====
 "%CPPCHECK_CMD%" --project="%CC_JSON%" ^
     --enable=warning,performance,portability ^
     --suppress=missingIncludeSystem ^
-    --inline-suppressor ^
+    --inline-suppr ^
+    --library=qt ^
+    -i build ^
     --template="{file}:{line}: {severity}: {message} [{id}]" ^
     --output-file=reports\cppcheck.txt
 if errorlevel 1 (
@@ -68,14 +70,17 @@ echo [STATIC] cppcheck done -^> reports\cppcheck.txt
 
 echo [STATIC] ==== 2/3 clang-tidy ====
 if exist reports\clang-tidy.txt del reports\clang-tidy.txt
-for /r "motor_antomation\src" %%f in (*.cpp) do (
+REM 用 compile_commands.json 里的绝对源码路径驱动 clang-tidy：
+REM for /r 的相对路径无法被 -p 正确匹配到编译命令。
+python -c "import json,sys; [print(e['file']) for e in json.load(open(sys.argv[1],encoding='utf-8')) if e['file'].find('motor_antomation/src/')>=0 and not e['file'].find('/autogen/')>=0]" "%CC_JSON%" > %TEMP%\tidy_files.txt
+for /f "usebackq delims=" %%f in ("%TEMP%\tidy_files.txt") do (
     echo [STATIC]   clang-tidy %%f
     "%CLANG_TIDY_CMD%" -p build\ci-tests "%%f" >> reports\clang-tidy.txt 2>&1
 )
 echo [STATIC] clang-tidy done -^> reports\clang-tidy.txt
 
 echo [STATIC] ==== 3/3 compare critical warnings vs baseline ====
-findstr ": error:" reports\cppcheck.txt > reports\cppcheck_errors.tmp 2>nul || type nul > reports\cppcheck_errors.tmp
+findstr /c:": error:" reports\cppcheck.txt > reports\cppcheck_errors.tmp 2>nul || type nul > reports\cppcheck_errors.tmp
 findstr /c:": error:" reports\clang-tidy.txt > reports\clangtidy_errors.tmp 2>nul || type nul > reports\clangtidy_errors.tmp
 
 if not exist reports\baseline_cppcheck.txt (
@@ -84,23 +89,47 @@ if not exist reports\baseline_cppcheck.txt (
     copy /y reports\clang-tidy.txt reports\baseline_clang-tidy.txt >nul
     copy /y reports\clangtidy_errors.tmp reports\baseline_clangtidy_errors.txt >nul
     echo [STATIC] first run: baseline written to reports\baseline_*.txt
-    echo [STATIC] PASSED (baseline established; later runs compare against it)
+    echo [STATIC] PASSED baseline established; later runs compare against it
     exit /b 0
 )
 
 REM New critical warnings = error lines not present in the baseline.
+REM NOTE: findstr /g: with an EMPTY baseline file is unreliable (returns 2),
+REM so guard the baseline-empty case explicitly.
 set "NEW_ERRORS=0"
-findstr /v /x /l /g:reports\baseline_cppcheck_errors.txt reports\cppcheck_errors.tmp > reports\new_errors.tmp 2>nul
-for %%A in (reports\new_errors.tmp) do if %%~zA GTR 0 (
-    echo [STATIC] new cppcheck critical warnings:
-    type reports\new_errors.tmp
-    set "NEW_ERRORS=1"
+
+for %%B in (reports\baseline_cppcheck_errors.txt) do set "BASE_CP=%%~zB"
+for %%A in (reports\cppcheck_errors.tmp) do set "CUR_CP=%%~zA"
+if "%BASE_CP%"=="0" (
+    if not "%CUR_CP%"=="0" (
+        echo [STATIC] new cppcheck critical warnings:
+        type reports\cppcheck_errors.tmp
+        set "NEW_ERRORS=1"
+    )
+) else (
+    findstr /v /x /l /g:reports\baseline_cppcheck_errors.txt reports\cppcheck_errors.tmp > reports\new_errors.tmp 2>nul
+    for %%A in (reports\new_errors.tmp) do if %%~zA GTR 0 (
+        echo [STATIC] new cppcheck critical warnings:
+        type reports\new_errors.tmp
+        set "NEW_ERRORS=1"
+    )
 )
-findstr /v /x /l /g:reports\baseline_clangtidy_errors.txt reports\clangtidy_errors.tmp > reports\new_errors.tmp 2>nul
-for %%A in (reports\new_errors.tmp) do if %%~zA GTR 0 (
-    echo [STATIC] new clang-tidy critical warnings:
-    type reports\new_errors.tmp
-    set "NEW_ERRORS=1"
+
+for %%B in (reports\baseline_clangtidy_errors.txt) do set "BASE_CT=%%~zB"
+for %%A in (reports\clangtidy_errors.tmp) do set "CUR_CT=%%~zA"
+if "%BASE_CT%"=="0" (
+    if not "%CUR_CT%"=="0" (
+        echo [STATIC] new clang-tidy critical warnings:
+        type reports\clangtidy_errors.tmp
+        set "NEW_ERRORS=1"
+    )
+) else (
+    findstr /v /x /l /g:reports\baseline_clangtidy_errors.txt reports\clangtidy_errors.tmp > reports\new_errors.tmp 2>nul
+    for %%A in (reports\new_errors.tmp) do if %%~zA GTR 0 (
+        echo [STATIC] new clang-tidy critical warnings:
+        type reports\new_errors.tmp
+        set "NEW_ERRORS=1"
+    )
 )
 
 if "%NEW_ERRORS%"=="1" (
