@@ -1,5 +1,5 @@
 #include <QtTest/QtTest>
-#include "../../src/communication/protocol/VofaParser.h"
+#include "../../../src/communication/protocol/VofaParser.h"
 
 using namespace MotorStudio;
 

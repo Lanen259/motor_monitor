@@ -147,7 +147,55 @@ git add <名单> && git commit     # 直接改、直接提交到 master
 - Bug 修复 → systematic-debugging
 - 写代码 → test-driven-development
 - 多任务计划执行 → subagent-driven-development 或 dispatching-parallel-agents
-- 代码完成 → requesting-code-review；收到意见 → receiving-code-review
-- 宣称完成前 → verification-before-completion
+- 代码完成 → 先跑静态检查 `scripts\static-analysis.bat`（零新增严重告警，基线 `reports/baseline_*.txt`），再 requesting-code-review；收到意见 → receiving-code-review
+- 宣称完成前 → verification-before-completion（机器证据优先：`gate.bat` + `ctest` + CI 绿）
 
 **优先级：本文件的指令 > 技能 > 默认行为。除非用户明确说跳过技能，否则不要跳过。**
+
+### 9.1 每次代码修改 = 强制完整流程（不可跳过）
+
+**任何代码修改**（新增功能、修 Bug、重构、UI 调整，无论大小）**必须走完整 Superpowers 工作流**，禁止"改完就交"：
+
+1. **澄清与计划**：新功能先 `brainstorming` → `writing-plans`；修 Bug 先 `systematic-debugging`；动手前明确需求。
+2. **TDD 实现**：先写/更新 QTest 用例再写实现；新逻辑必须有对应测试并 `add_test()` 注册进 CTest（见 §10 D3）。
+3. **静态检查**：`scripts\static-analysis.bat` 零新增严重告警（D4）。
+4. **代码审查（强制）**：实现完成后必须 `requesting-code-review`，收到意见后 `receiving-code-review` 逐条处理。**禁止跳过、禁止假装走流程。**
+5. **机器验证**：`gate.bat` 全量编译 + `ctest --output-on-failure` 全绿 + GitHub CI 绿（D1/D2/D6）。
+6. **收尾**：UI/功能变更同步 `USER_MANUAL.md`（D7），`git commit` 并 push（D5）。
+
+**审查红线（审查 Agent 必须逐项核对，缺一不可）：**
+- **正确性**：内存/生命周期、悬垂指针、信号重入、线程安全、异常路径。
+- **完整性（不偷工减料）**：界面控件与交互必须做成**完整可用功能**，禁止占位/示例级/半成品/降级糊弄；功能参数、边界条件、失败处理都要覆盖。
+- **测试与回归**：有测试、能回归，不破坏既有功能。
+
+**违背后果**：任一环节被跳过 = 改动视为未完成，禁止提交与合并（与 §10 D8 同源）。
+
+---
+
+## 10. 完成定义（Definition of Done，本项目强制标准）
+
+> 任何代码修改在声称"完成"前，必须全部满足（与 `docs/QT自动化开发验证环境_需求与执行规格.md` §5 同源）：
+
+| # | 检查项 | 工具/命令 | 违背后果 |
+|---|---|---|---|
+| D1 | 全量编译通过 | `scripts\gate.bat` 步骤 1（qmake） | 不合并 |
+| D2 | 全部测试通过 | `ctest --output-on-failure` | 不合并 |
+| D3 | 新逻辑有对应 QTest 用例且已 `add_test()` 注册 | `ctest -N` 核对 | 视为未完成 |
+| D4 | 静态检查零新增严重告警 | `scripts\static-analysis.bat` | 退回审查 |
+| D5 | 提交到对应分支并 push | `git push` | 视为未完成 |
+| D6 | GitHub CI 绿 | Actions 页面（`.github/workflows/ci.yml`） | 不合并 |
+| D7 | UI/功能变更同步手册 | `USER_MANUAL.md` | 不合并 |
+| D8 | 触发 Superpowers 审查 | `requesting-code-review` | 不合并 |
+
+> 集成代理合并时以此表为准；机器能查的（D1/D2/D3/D4/D6）一律以机器结果为准，不采信口头"测过了"。
+
+## 11. 新 QT 项目接入标准（所有未来 QT 项目通用）
+
+新项目接入本验证环境（预计半天内完成）：
+1. 复制 `scripts/gate.bat`，把 `GATE_QT_DIR` / `GATE_MINGW_BIN` 默认值改成新项目工具链路径。
+2. 复制 `.github/workflows/ci.yml`，修改 `working-directory` 与 `-S` 参数为新项目源码目录。
+3. 为新项目源码目录补一个顶层 `CMakeLists.txt`（仿 `motor_antomation/CMakeLists.txt`），模块按依赖顺序。
+4. `tests/` 下每个测试可执行文件必须 `add_test()` 注册（强制）。
+5. 复制本文件 §10 完成定义与 `scripts/static-analysis.bat`。
+6. GitHub 新建仓库后：`git push -u origin master`，观察首个 CI 绿。
+7. 验收 = §10 的 D1-D8 全部可机器核验。

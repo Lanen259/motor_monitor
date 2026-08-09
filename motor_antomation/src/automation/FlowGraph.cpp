@@ -355,7 +355,7 @@ FlowGraph FlowGraph::fromTestCase(const TestCase& tc)
                     FlowNode node;
                     node.id    = idGen.next("n");
                     node.type  = nodeType;
-                    node.label = step.description + " (" + kv.first + ")";
+                    node.label = step.description;
                     node.params = {{"name", kv.first}, {"value", kv.second}};
                     node.posX = 100.0;
                     node.posY = 100.0 + static_cast<double>(graph.nodes.size()) * 100.0;
