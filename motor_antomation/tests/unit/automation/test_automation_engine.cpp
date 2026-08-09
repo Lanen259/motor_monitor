@@ -28,10 +28,12 @@ private slots:
         // In the build tree, the test executable runs with CWD at the build root.
         // We resolve paths relative to the source tree via TEST_DATA_DIR if set,
         // otherwise fall back to a relative path from the tests/ directory.
-        const char* dataDir = qgetenv("TEST_DATA_DIR");
-        if (dataDir && *dataDir) {
-            sampleJsonPath = QString(dataDir) + "/automation/sample_test.json";
-            emptyJsonPath  = QString(dataDir) + "/automation/empty_steps.json";
+        // 修复：qgetenv 返回临时 QByteArray，赋给 const char* 会悬垂（UB），
+        // 导致 fixture 路径取决于堆状态（不同 CWD/构建下时好时坏）。
+        const QByteArray dataDirBytes = qgetenv("TEST_DATA_DIR");
+        if (!dataDirBytes.isEmpty()) {
+            sampleJsonPath = QString::fromUtf8(dataDirBytes) + "/automation/sample_test.json";
+            emptyJsonPath  = QString::fromUtf8(dataDirBytes) + "/automation/empty_steps.json";
         } else {
             sampleJsonPath = QTest::qFindTestData("sample_test.json");
             emptyJsonPath  = QTest::qFindTestData("empty_steps.json");
