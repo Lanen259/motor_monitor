@@ -24,7 +24,7 @@
 #include "ui/NodeParamPanel.h"
 #include "ui/VariableEditorPanel.h"
 #include "automation/AutomationEngine.h"
-#include "common/ui_watchdog.h"
+#include "common/watchdog.h"
 
 using namespace MotorStudio;
 
