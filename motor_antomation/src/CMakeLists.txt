@@ -1,14 +1,15 @@
-# 子模�?
-add_subdirectory(app)
+# 库模块按依赖顺序排列（先依赖、后被依赖），
+# 避免 CMake 把尚未定义的目标当普通 -l 库名导致链接失败
 add_subdirectory(core)
-add_subdirectory(communication)
 add_subdirectory(databus)
 add_subdirectory(data)
+add_subdirectory(communication)
 add_subdirectory(curve)
 add_subdirectory(device)
 add_subdirectory(parameter)
+add_subdirectory(logging)
 add_subdirectory(automation)
 add_subdirectory(plugin)
-add_subdirectory(logging)
 add_subdirectory(scripting)
 add_subdirectory(ui)
+add_subdirectory(app)

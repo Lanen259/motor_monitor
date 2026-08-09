@@ -33,6 +33,7 @@ enum class TokenType {
     Comma,        // ,
     ChannelRef,   // channel:xxx
     VarRef,       // $xxx
+    Error,        // 非法字符（孤立 & / | / = 等）——解析器见到即失败
     Eof           // end of input
 };
 

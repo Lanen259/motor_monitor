@@ -16,9 +16,19 @@ moc_*.cpp
 ui_*.h
 qrc_*.cpp
 Makefile
+# qmake 在源码目录内生成的构建产物
+Makefile.Debug
+Makefile.Release
+object_script.*
+debug/
+release/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
+.claude/
 CTestTestfile.cmake
 *.pro.user
-*.pro.user.*
+*.pro.user.*.qmake.stash
+qmake.stash
+qmake.stash
+.qmake.stash

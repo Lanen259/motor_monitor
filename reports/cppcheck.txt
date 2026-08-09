@@ -1,0 +1,3 @@
+motor_antomation\src\databus\DataBus.cpp:29: performance: Variable 'rateStartTime' is assigned in constructor body. Consider performing initialization in initialization list. [useInitializationList]
+motor_antomation\src\communication\transport\SerialTransport.h:15: style: Virtual function 'close' is called from destructor '~SerialTransport()' at line 22. Dynamic binding is not used. [virtualCallInConstructor]
+motor_antomation\src\ui\AutomationWidget.cpp:408: warning: Either the condition 'm_flowCanvas' is redundant or there is possible null pointer dereference: m_flowCanvas. [nullPointerRedundantCheck]

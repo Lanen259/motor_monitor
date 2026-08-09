@@ -1,8 +1,8 @@
 #include <QtTest/QtTest>
-#include "../../src/automation/AutomationEngine.h"
-#include "../../src/automation/TestRunner.h"
-#include "../../src/databus/DataBus.h"
-#include "../../src/databus/Topic.h"
+#include "../../../src/automation/AutomationEngine.h"
+#include "../../../src/automation/TestRunner.h"
+#include "../../../src/databus/DataBus.h"
+#include "../../../src/databus/Topic.h"
 
 using namespace MotorStudio;
 
