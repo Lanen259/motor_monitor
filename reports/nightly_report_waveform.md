@@ -80,6 +80,6 @@
 | 门禁 | master 本地 gate.bat PASSED（17/17，76.46s）|
 | 静态检查 | clang-tidy 零新增告警（cppcheck 本机缺失） |
 | master push | `33b0b32..90e328d`（含 UB 修复 `90e328d`） |
-| master CI | 见 GitHub Actions（run `31327660581`） |
+| master CI | **绿**（run `31327660581`，head `90e328d`，completed success） |
 | 合并锁 | 已删除（合并+push 完成后释放） |
 
