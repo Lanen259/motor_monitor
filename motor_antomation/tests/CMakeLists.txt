@@ -314,3 +314,33 @@ add_ui_interaction_test(TestMultiCurveContainerInteraction unit/ui/test_multicur
 
 # PlotCell 交互测试（WF-03/SYM/W4）
 add_ui_interaction_test(TestPlotCellInteraction unit/ui/test_plotcell_interaction.cpp)
+
+# === Phase 4：波形域仿真压力测试 ===
+# DeviceSimulator(1kHz) -> VofaParser -> DataBus -> CurveEngine + 随机交互 ×3 种子
+# 看门狗 >300ms 即 QFAIL；TIMEOUT 600 防挂死。
+add_executable(StressWaveformUi
+    stress/stress_waveform_ui.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/communication/protocol/VofaParser.cpp
+)
+
+target_include_directories(StressWaveformUi PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+)
+
+target_link_libraries(StressWaveformUi PRIVATE
+    Qt5::Test
+    Qt5::Widgets
+    MotorStudioUi
+    MotorStudioDevice
+    MotorStudioCommunication
+    MotorStudioDataBus
+    MotorStudioCurve
+)
+
+add_test(NAME StressWaveformUi COMMAND StressWaveformUi)
+set_tests_properties(StressWaveformUi PROPERTIES
+    TIMEOUT 600
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)

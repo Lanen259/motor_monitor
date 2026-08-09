@@ -114,11 +114,12 @@ void CurveWidget::pushFrame(const QVector<float>& values, uint64_t timestampUs)
 void CurveWidget::attachCurveEngine(CurveEngine* engine, int fps)
 {
     m_curveEngine = engine;
+    m_pullFps = (fps > 0) ? fps : 30;
     if (!m_pullTimer) {
         m_pullTimer = new QTimer(this);
         connect(m_pullTimer, &QTimer::timeout, this, &CurveWidget::onPullTimer);
     }
-    m_pullTimer->start(1000 / fps);
+    m_pullTimer->start(1000 / m_pullFps);
 }
 
 void CurveWidget::detachCurveEngine()
@@ -144,6 +145,15 @@ void CurveWidget::setAutoPopulateChannels(bool enabled)
 void CurveWidget::onPullTimer()
 {
     if (!m_curveEngine) return;
+
+    // WF-02: 帧预算节流 —— 距上次实际拉取更新不足一个帧周期则跳过。
+    // 多格容器/多子图下大量 30fps 定时器若每个 tick 都重绘会形成重绘风暴，
+    // 拖垮事件循环。限制每个控件实际拉取+重绘速率 ≤ fps。
+    const qint64 frameBudgetMs = qMax<qint64>(1, 1000 / m_pullFps);
+    if (m_pullThrottle.isValid() && m_pullThrottle.elapsed() < frameBudgetMs) {
+        return;
+    }
+    m_pullThrottle.restart();
 
     auto& registry = TopicRegistry::instance();
 
@@ -433,6 +443,10 @@ void CurveWidget::drawGrid(QPainter& painter, const QRect& rect)
 
 void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
 {
+    // WF-02: 曲线绘制关闭抗锯齿 —— offscreen/纯软渲染下大量 AA 线条（多格×多通道
+    // 可达数万条）成本极高，是重绘风暴/卡死主因。网格与文字仍保留 AA。
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
     if (m_autoScale) {
         updateAutoScale();
     }
@@ -456,7 +470,12 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
             }
 
             // LTTB downsample to pixel width (avoids rendering invisible detail)
+            // 上限 250 点/通道：超采样超出人眼/像素分辨能力，且多格×多通道下
+            // 过量线段是重绘风暴/卡死主因（WF-02）。上限后单格渲染成本大幅下降。
             size_t targetPts = static_cast<size_t>(std::max(2, rect.width()));
+            if (targetPts > kMaxRenderPointsPerChannel) {
+                targetPts = kMaxRenderPointsPerChannel;
+            }
             auto downsampled = m_curveEngine->downsampleRange(
                 ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
             if (downsampled.size() < 2) continue;
@@ -689,6 +708,9 @@ void CurveWidget::mousePressEvent(QMouseEvent* event)
                     auto* ceCh = m_curveEngine->channel(ch.topicId);
                     if (!ceCh || ceCh->count() < 2) continue;
                     size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
+                    if (targetPts > kMaxRenderPointsPerChannel) {
+                        targetPts = kMaxRenderPointsPerChannel;
+                    }
                     auto downsampled = m_curveEngine->downsampleRange(
                 ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
                     if (downsampled.size() < 2) continue;
@@ -756,10 +778,15 @@ void CurveWidget::mouseMoveEvent(QMouseEvent* event)
         // Reverse direction: mouse down (dy > 0) -> curve up (yOffset decreases)
         m_channels[m_hitChannelIndex].yOffset -= dy;
 
-        // Show offset tooltip
+        // Show offset tooltip (WF-03: 节流，仅偏移变化超过阈值才更新，避免每次 move 重建提示窗；
+        // 隐藏控件不建 tooltip 窗口 —— offscreen/无窗口场景下建窗开销极高）
         double yoff = m_channels[m_hitChannelIndex].yOffset;
-        QToolTip::showText(event->globalPos(),
-                           QString("偏移: %1 px").arg(yoff, 0, 'f', 1));
+        if (isVisible() && (!m_tooltipShown || std::abs(yoff - m_lastTooltipOffset) > 4.0)) {
+            QToolTip::showText(event->globalPos(),
+                               QString("偏移: %1 px").arg(yoff, 0, 'f', 1));
+            m_lastTooltipOffset = yoff;
+            m_tooltipShown = true;
+        }
         update();
         event->accept();
     } else if (m_panning) {
@@ -789,6 +816,7 @@ void CurveWidget::mouseReleaseEvent(QMouseEvent* event)
         m_hitChannelIndex = -1;
         setCursor(Qt::ArrowCursor);
         QToolTip::hideText();
+        m_tooltipShown = false;
         event->accept();
     } else if (event->button() == Qt::LeftButton && m_rubberBanding) {
         // WI-104: 完成框选缩放
@@ -851,6 +879,9 @@ void CurveWidget::mouseDoubleClickEvent(QMouseEvent* event)
             auto* ceCh = m_curveEngine->channel(ch.topicId);
             if (!ceCh || ceCh->count() < 2) continue;
             size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
+            if (targetPts > kMaxRenderPointsPerChannel) {
+                targetPts = kMaxRenderPointsPerChannel;
+            }
             auto downsampled = m_curveEngine->downsampleRange(
                 ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
             if (downsampled.size() < 2) continue;
