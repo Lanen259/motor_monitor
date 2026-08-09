@@ -435,12 +435,14 @@ void PlotCell::setChannels(const QVector<uint32_t>& topicIds)
     m_curveWidget->clearAllChannels();
     m_channelIds.clear();
 
+    // WF-03：批量追加，全部完成后只重建一次通道栏（避免逐通道 rebuildChannelBar 的 O(N²) churn）
     for (uint32_t tid : topicIds) {
-        addChannel(tid);
+        appendChannel(tid);
     }
+    rebuildChannelBar();
 }
 
-void PlotCell::addChannel(uint32_t topicId)
+void PlotCell::appendChannel(uint32_t topicId)
 {
     if (m_channelIds.contains(topicId)) return;
 
@@ -471,6 +473,12 @@ void PlotCell::addChannel(uint32_t topicId)
     }
 
     m_channelIds.append(topicId);
+}
+
+void PlotCell::addChannel(uint32_t topicId)
+{
+    if (m_channelIds.contains(topicId)) return;
+    appendChannel(topicId);
     rebuildChannelBar();
 }
 

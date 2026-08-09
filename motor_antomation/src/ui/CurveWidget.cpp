@@ -18,6 +18,16 @@ namespace MotorStudio {
 // WI-801: point-to-line-segment distance helper (defined at end of file)
 static double pointToSegmentDistance(const QPointF& p, const QPointF& a, const QPointF& b);
 
+// 返回数据中第一个 x() >= windowStart 的迭代器（数据按时间升序）。
+// 用于把渲染 / 命中测试限制在可见时间窗口内，避免 legacy push 模式下
+// 无界累积数据被全量遍历导致单次 paint 冻结（WF-14）。
+static QVector<QPointF>::const_iterator firstVisiblePoint(
+    const QVector<QPointF>& data, double windowStart)
+{
+    return std::lower_bound(data.begin(), data.end(), windowStart,
+                            [](const QPointF& p, double t) { return p.x() < t; });
+}
+
 CurveWidget::CurveWidget(QWidget* parent)
     : QWidget(parent)
     , m_autoScale(true)
@@ -447,7 +457,8 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
 
             // LTTB downsample to pixel width (avoids rendering invisible detail)
             size_t targetPts = static_cast<size_t>(std::max(2, rect.width()));
-            auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+            auto downsampled = m_curveEngine->downsampleRange(
+                ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
             if (downsampled.size() < 2) continue;
 
             QPointF prev;
@@ -467,13 +478,15 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
             continue;
         }
 
-        // Legacy push mode: render all local data points
+        // Legacy push mode: 仅绘制可见时间窗口 [0, xRangeSeconds] 内的点（WF-14 有界渲染）
         if (ch.data.isEmpty()) continue;
 
         QPointF prev;
         bool first = true;
-        for (const auto& pt : ch.data) {
-            QPointF pixel = dataToPixel(pt, rect);
+        auto it = firstVisiblePoint(ch.data, 0.0);
+        for (; it != ch.data.end(); ++it) {
+            if (it->x() > m_xRangeSeconds) break;
+            QPointF pixel = dataToPixel(*it, rect);
             // WI-801: apply vertical Y-offset
             pixel.ry() -= ch.yOffset;
             if (first) {
@@ -676,7 +689,8 @@ void CurveWidget::mousePressEvent(QMouseEvent* event)
                     auto* ceCh = m_curveEngine->channel(ch.topicId);
                     if (!ceCh || ceCh->count() < 2) continue;
                     size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
-                    auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+                    auto downsampled = m_curveEngine->downsampleRange(
+                ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
                     if (downsampled.size() < 2) continue;
                     for (const auto& p : downsampled) {
                         double t = (p.first - m_t0) / 1000000.0;
@@ -685,8 +699,10 @@ void CurveWidget::mousePressEvent(QMouseEvent* event)
                         pts.push_back(pixel);
                     }
                 } else if (!ch.data.isEmpty()) {
-                    for (const auto& pt : ch.data) {
-                        QPointF pixel = dataToPixel(pt, plotRect);
+                    auto it = firstVisiblePoint(ch.data, 0.0);
+                    for (; it != ch.data.end(); ++it) {
+                        if (it->x() > m_xRangeSeconds) break;
+                        QPointF pixel = dataToPixel(*it, plotRect);
                         pixel.ry() -= ch.yOffset;
                         pts.push_back(pixel);
                     }
@@ -835,7 +851,8 @@ void CurveWidget::mouseDoubleClickEvent(QMouseEvent* event)
             auto* ceCh = m_curveEngine->channel(ch.topicId);
             if (!ceCh || ceCh->count() < 2) continue;
             size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
-            auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+            auto downsampled = m_curveEngine->downsampleRange(
+                ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
             if (downsampled.size() < 2) continue;
             for (const auto& p : downsampled) {
                 double t = (p.first - m_t0) / 1000000.0;

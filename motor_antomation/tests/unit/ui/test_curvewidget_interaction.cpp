@@ -78,6 +78,10 @@ private slots:
         // 6M 点 @1kHz ≈ 100 分钟持续供数（远超合理的可渲染窗口；修复前全量重绘应冻结）
         pumpLegacyData(&w, 0, 6000000, 1'000'000);
 
+        // 预热一次渲染，吸收 offscreen 下首次 QFontDatabase 初始化开销（非数据相关）
+        { QPixmap warm(w.size()); w.render(&warm); }
+        QCoreApplication::processEvents();
+
         // 强制同步渲染并计时：单次 paint 不得 > 300ms（卡死判定阈值）
         QElapsedTimer timer;
         timer.start();
