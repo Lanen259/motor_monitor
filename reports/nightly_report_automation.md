@@ -100,6 +100,23 @@
 
 ## 8. 遗留事项
 
-- **合并到 master**：待本报告入库、域分支 CI 绿后，按第 7 步在主 checkout 执行 `git merge domain/automation` + 门禁 + push master。
+### 8.1 合并 master 被阻塞（需集成代理裁决）
+
+已按任务书第 7 步在主 checkout 尝试 `git merge origin/domain/automation --no-ff`，**出现冲突已 abort + 删锁**（未自行解决 master-owned 文件冲突，遵守红线）。
+
+**冲突文件与性质**（均为 `tests/` 测试基建，非产品代码）：
+
+1. **`motor_antomation/tests/CMakeLists.txt`（content）**：master 已包含**波形域**夜间任务新增的测试目标（`TestCurveWidgetInteraction`、`TestHistoryReplayInteraction`、`add_ui_interaction_test` 宏等）；与自动化域新增的 UI/压力测试目标冲突。两者**加性可合**（波形测试 + 自动化测试并存），需集成代理合并去重。
+2. **`motor_antomation/tests/common/watchdog.h`（add/add）**：master 与 automation 各自创建了共享看门狗头文件（共享规格 §2.2）。需集成代理统一实现（实现逻辑应一致，阈值 300ms）。
+3. **`motor_antomation/tests/unit/automation/test_automation_engine.cpp`（content）**：**master 已独立修复同一缺陷**（提交 `90e328d`：qgetenv 悬垂指针），与本分支修复一致 → 冲突可简单消解（保留任一即可）。
+
+**建议给集成代理的处理方案**：按"波形测试 + 自动化测试并存"合并 CMakeLists（删除重复的 `add_ui_interaction_test` 宏或统一）；看门狗头文件取一版本（建议统一为共享规格参考实现）；test_automation_engine.cpp 保留 master 的 `90e328d` 版本（等效）。
+
+**域分支状态**：`domain/automation` = e9ea894，已 push，**CI 绿**，18/18 ctest 全绿，gate PASSED，§11 验收矩阵全绿 —— 具备合并条件，仅因与波形域并发开发的测试基建冲突而待集成代理执行合并。
+
+### 8.2 其他遗留
+
+- **A-05/M1 关闭时运行残留窗口**：`AutomationWidget` 析构 `wait(2000)` 在 worker 阻塞于跨线程回调时会超时。建议集成代理在主 checkout 调整 MainWindow 引擎生命周期（运行中关闭 → 先 stop+wait 再删引擎）。
+- **L2 存量竞态**：`AutomationEngine::run()` 中 `d->currentStepIndex` 写、回调成员读无锁（域内已值拷贝缓解主路径），后续可统一加锁。
 - **USER_MANUAL.md 同步**：合入 master 后由集成代理统一更新（涉及运行按钮行为、变量表功能、流程运行完成态）。
 - **Bug 登记**：A-17 死循环、H1 元类型缺失等已在报告中闭环，建议集成代理在 master 的 `motor_antomation_Bug_Report.md` 补充登记。
