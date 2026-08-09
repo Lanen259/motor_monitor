@@ -14,6 +14,7 @@
 #include <QSet>
 #include <QDebug>
 #include <QFileInfo>
+#include <QCoreApplication>
 #include <algorithm>
 
 namespace MotorStudio {
@@ -48,8 +49,11 @@ void HistoryReplayWidget::clearAll()
     m_mergedChannels.clear();
     m_curveWidget->clearData();
     m_curveWidget->clearAllChannels();
+    // WF-09：重填下拉前 blockSignals，避免 clear() 触发 currentIndexChanged 重入 refreshCurveDisplay
+    m_channelFilter->blockSignals(true);
     m_channelFilter->clear();
     m_channelFilter->addItem(tr("全部通道"));
+    m_channelFilter->blockSignals(false);
     m_infoLabel->setText(tr("就绪 — 未加载文件"));
     emit allCleared();
 }
@@ -248,6 +252,12 @@ void HistoryReplayWidget::loadCSV(const QString& path)
                 QString colName = headers[i];
                 fd.channels[colName].append(QPointF(t - t0, value));
             }
+        }
+
+        // WF-07：大文件解析分片让出事件循环，避免 GUI 线程单次阻塞 > 300ms。
+        // 解析期间 m_loadedFiles 尚未追加（循环结束后才 append），重入读取的是旧快照，安全。
+        if ((rowCount & 0x7FF) == 0) {  // 每 2048 行
+            QCoreApplication::processEvents(QEventLoop::AllEvents);
         }
     }
 

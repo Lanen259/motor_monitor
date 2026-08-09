@@ -237,3 +237,110 @@ target_link_libraries(TestMockMcuCurve PRIVATE
 )
 
 add_test(NAME TestMockMcuCurve COMMAND TestMockMcuCurve)
+
+# === 波形域 UI 交互 / 卡死回归测试（夜间防卡死自测 Phase 2/4） ===
+# 统一规则：offscreen 平台、看门狗零违规、显式 TIMEOUT 防挂起。
+
+# CurveWidget 交互测试（W1/W2/W3/SYM）
+add_executable(TestCurveWidgetInteraction
+    unit/ui/test_curvewidget_interaction.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+
+target_include_directories(TestCurveWidgetInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+)
+
+target_link_libraries(TestCurveWidgetInteraction PRIVATE
+    Qt5::Test
+    Qt5::Widgets
+    MotorStudioUi
+)
+
+add_test(NAME TestCurveWidgetInteraction COMMAND TestCurveWidgetInteraction)
+set_tests_properties(TestCurveWidgetInteraction PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# HistoryReplayWidget 交互测试（WF-07/08/09/SYM）
+add_executable(TestHistoryReplayInteraction
+    unit/ui/test_historyreplay_interaction.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+
+target_include_directories(TestHistoryReplayInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+)
+
+target_link_libraries(TestHistoryReplayInteraction PRIVATE
+    Qt5::Test
+    Qt5::Widgets
+    MotorStudioUi
+)
+
+add_test(NAME TestHistoryReplayInteraction COMMAND TestHistoryReplayInteraction)
+set_tests_properties(TestHistoryReplayInteraction PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# 通用 UI 交互测试的目标模板宏（避免逐项重复 link 依赖清单）
+function(add_ui_interaction_test TGT SRC)
+    add_executable(${TGT}
+        ${SRC}
+        ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+        ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+    )
+    target_include_directories(${TGT} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/common
+    )
+    target_link_libraries(${TGT} PRIVATE
+        Qt5::Test
+        Qt5::Widgets
+        MotorStudioUi
+    )
+    add_test(NAME ${TGT} COMMAND ${TGT})
+    set_tests_properties(${TGT} PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endfunction()
+
+# MultiCurveContainer 交互测试（WF-01/02/W4）
+add_ui_interaction_test(TestMultiCurveContainerInteraction unit/ui/test_multicurvecontainer_interaction.cpp)
+
+# PlotCell 交互测试（WF-03/SYM/W4）
+add_ui_interaction_test(TestPlotCellInteraction unit/ui/test_plotcell_interaction.cpp)
+
+# === Phase 4：波形域仿真压力测试 ===
+# DeviceSimulator(1kHz) -> VofaParser -> DataBus -> CurveEngine + 随机交互 ×3 种子
+# 看门狗 >300ms 即 QFAIL；TIMEOUT 600 防挂死。
+add_executable(StressWaveformUi
+    stress/stress_waveform_ui.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/communication/protocol/VofaParser.cpp
+)
+
+target_include_directories(StressWaveformUi PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+)
+
+target_link_libraries(StressWaveformUi PRIVATE
+    Qt5::Test
+    Qt5::Widgets
+    MotorStudioUi
+    MotorStudioDevice
+    MotorStudioCommunication
+    MotorStudioDataBus
+    MotorStudioCurve
+)
+
+add_test(NAME StressWaveformUi COMMAND StressWaveformUi)
+set_tests_properties(StressWaveformUi PROPERTIES
+    TIMEOUT 600
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)

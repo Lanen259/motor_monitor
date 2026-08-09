@@ -25,10 +25,52 @@ void CurveChannel::append(uint64_t timestampUs, float value) {
     values_[writeIndex_] = value;
 
     writeIndex_ = (writeIndex_ + 1) % capacity_;
+    const bool wrapped = (count_ >= capacity_);
     if (count_ < capacity_) {
         count_++;
     }
     totalWritten_++;
+
+    // WF-13: 增量维护范围缓存，避免每次 dataRange() 都 O(capacity) 全量扫描。
+    if (!rangeValid_) {
+        cachedRange_ = {value, value, timestampUs, timestampUs};
+        rangeValid_ = true;
+        rangeVersion_ = totalWritten_.load();
+    } else if (!wrapped) {
+        // append-only 阶段：增量更新即可
+        cachedRange_.minVal = std::min(cachedRange_.minVal, value);
+        cachedRange_.maxVal = std::max(cachedRange_.maxVal, value);
+        cachedRange_.minTime = std::min(cachedRange_.minTime, timestampUs);
+        cachedRange_.maxTime = std::max(cachedRange_.maxTime, timestampUs);
+    } else {
+        // 回绕后：吸收新点，周期性全量重扫修正（被覆盖的旧极值点）
+        cachedRange_.minVal = std::min(cachedRange_.minVal, value);
+        cachedRange_.maxVal = std::max(cachedRange_.maxVal, value);
+        cachedRange_.minTime = std::min(cachedRange_.minTime, timestampUs);
+        cachedRange_.maxTime = std::max(cachedRange_.maxTime, timestampUs);
+        if (totalWritten_.load() - rangeVersion_ >= kRangeRescanEvery) {
+            cachedRange_ = scanRangeLocked();
+            rangeVersion_ = totalWritten_.load();
+        }
+    }
+}
+
+CurveChannel::Range CurveChannel::scanRangeLocked() const {
+    Range r;
+    r.minVal = std::numeric_limits<float>::max();
+    r.maxVal = std::numeric_limits<float>::lowest();
+    r.minTime = std::numeric_limits<uint64_t>::max();
+    r.maxTime = 0;
+    if (count_ == 0) return {0, 0, 0, 0};
+    size_t n = (count_ < capacity_) ? count_ : capacity_;
+    for (size_t i = 0; i < n; ++i) {
+        size_t idx = (count_ < capacity_) ? i : ((writeIndex_ + i) % capacity_);
+        r.minVal = std::min(r.minVal, values_[idx]);
+        r.maxVal = std::max(r.maxVal, values_[idx]);
+        r.minTime = std::min(r.minTime, timestamps_[idx]);
+        r.maxTime = std::max(r.maxTime, timestamps_[idx]);
+    }
+    return r;
 }
 
 std::vector<std::pair<uint64_t, float>> CurveChannel::allPoints() const {
@@ -73,30 +115,41 @@ std::vector<std::pair<uint64_t, float>> CurveChannel::recentPoints(size_t n) con
 }
 
 CurveChannel::Range CurveChannel::dataRange() const {
+    // WF-13: 命中缓存则直接返回，避免高频拉取 tick 的 O(capacity) 扫描
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (rangeValid_) return cachedRange_;
+    if (count_ == 0) return {0, 0, 0, 0};
+    cachedRange_ = scanRangeLocked();
+    rangeValid_ = true;
+    rangeVersion_ = totalWritten_.load();
+    return cachedRange_;
+}
+
+CurveChannel::Range CurveChannel::cachedRange() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return rangeValid_ ? cachedRange_ : Range{0, 0, 0, 0};
+}
+
+std::vector<std::pair<uint64_t, float>> CurveChannel::pointsInRange(
+    uint64_t t0Us, uint64_t t1Us) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    Range r;
-    r.minVal = std::numeric_limits<float>::max();
-    r.maxVal = std::numeric_limits<float>::lowest();
-    r.minTime = std::numeric_limits<uint64_t>::max();
-    r.maxTime = 0;
+    if (count_ == 0 || t1Us <= t0Us) return {};
 
-    if (count_ == 0) {
-        r.minVal = 0;
-        r.maxVal = 0;
-        return r;
-    }
+    std::vector<std::pair<uint64_t, float>> result;
+    // 时间窗口估计容量（1ms 采样率下的保守上界），避免多次扩容
+    size_t est = std::min<size_t>(count_, (t1Us - t0Us) / 1000 + 16);
+    result.reserve(est);
 
+    // 环形缓冲按时间有序（从最旧到最新）。扫描到窗口起点，收集窗口内点，越过窗口即停。
     size_t n = (count_ < capacity_) ? count_ : capacity_;
     for (size_t i = 0; i < n; ++i) {
         size_t idx = (count_ < capacity_) ? i : ((writeIndex_ + i) % capacity_);
-        r.minVal = std::min(r.minVal, values_[idx]);
-        r.maxVal = std::max(r.maxVal, values_[idx]);
-        r.minTime = std::min(r.minTime, timestamps_[idx]);
-        r.maxTime = std::max(r.maxTime, timestamps_[idx]);
+        uint64_t ts = timestamps_[idx];
+        if (ts >= t1Us) break;                 // 已越过窗口（时间有序）
+        if (ts >= t0Us) result.emplace_back(ts, values_[idx]);
     }
-
-    return r;
+    return result;
 }
 
 void CurveChannel::clear() {
@@ -104,6 +157,8 @@ void CurveChannel::clear() {
     writeIndex_ = 0;
     count_ = 0;
     totalWritten_ = 0;
+    rangeValid_ = false;
+    rangeVersion_ = 0;
 }
 
 void CurveChannel::setCapacity(size_t newCapacity) {
@@ -140,6 +195,8 @@ void CurveChannel::setCapacity(size_t newCapacity) {
     capacity_ = newCapacity;
     writeIndex_ = (copyCount < newCapacity) ? copyCount : 0;
     count_ = copyCount;
+    rangeValid_ = false;
+    rangeVersion_ = 0;
 }
 
 // ============================================================
@@ -241,19 +298,15 @@ void CurveEngine::append(const DataPoint& point) {
     append(point.topicId, point.timestampUs, point.value);
 }
 
-// LTTB (Largest Triangle Three Buckets) 降采样算法
-std::vector<std::pair<uint64_t, float>> CurveEngine::downsample(
-    uint32_t topicId, size_t targetPoints) const
+// LTTB (Largest Triangle Three Buckets) 降采样算法（纯函数，供 downsample / downsampleRange 复用）
+static std::vector<std::pair<uint64_t, float>> lttbDownsample(
+    const std::vector<std::pair<uint64_t, float>>& points, size_t targetPoints)
 {
-    auto* ch = channel(topicId);
-    if (!ch) return {};
-
-    auto points = ch->allPoints();
-    if (points.size() <= targetPoints || targetPoints < 3) {
+    size_t dataSize = points.size();
+    if (dataSize <= targetPoints || targetPoints < 3) {
         return points;
     }
 
-    size_t dataSize = points.size();
     std::vector<std::pair<uint64_t, float>> result;
     result.reserve(targetPoints);
 
@@ -310,6 +363,24 @@ std::vector<std::pair<uint64_t, float>> CurveEngine::downsample(
 
     result.push_back(points.back());
     return result;
+}
+
+std::vector<std::pair<uint64_t, float>> CurveEngine::downsample(
+    uint32_t topicId, size_t targetPoints) const
+{
+    auto* ch = channel(topicId);
+    if (!ch) return {};
+    auto points = ch->allPoints();
+    return lttbDownsample(points, targetPoints);
+}
+
+std::vector<std::pair<uint64_t, float>> CurveEngine::downsampleRange(
+    uint32_t topicId, uint64_t t0Us, uint64_t t1Us, size_t targetPoints) const
+{
+    auto* ch = channel(topicId);
+    if (!ch) return {};
+    auto points = ch->pointsInRange(t0Us, t1Us);
+    return lttbDownsample(points, targetPoints);
 }
 
 CurveEngine::DataRange CurveEngine::dataRange(uint32_t topicId) const {

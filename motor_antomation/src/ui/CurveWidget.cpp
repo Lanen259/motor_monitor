@@ -18,6 +18,16 @@ namespace MotorStudio {
 // WI-801: point-to-line-segment distance helper (defined at end of file)
 static double pointToSegmentDistance(const QPointF& p, const QPointF& a, const QPointF& b);
 
+// 返回数据中第一个 x() >= windowStart 的迭代器（数据按时间升序）。
+// 用于把渲染 / 命中测试限制在可见时间窗口内，避免 legacy push 模式下
+// 无界累积数据被全量遍历导致单次 paint 冻结（WF-14）。
+static QVector<QPointF>::const_iterator firstVisiblePoint(
+    const QVector<QPointF>& data, double windowStart)
+{
+    return std::lower_bound(data.begin(), data.end(), windowStart,
+                            [](const QPointF& p, double t) { return p.x() < t; });
+}
+
 CurveWidget::CurveWidget(QWidget* parent)
     : QWidget(parent)
     , m_autoScale(true)
@@ -104,11 +114,12 @@ void CurveWidget::pushFrame(const QVector<float>& values, uint64_t timestampUs)
 void CurveWidget::attachCurveEngine(CurveEngine* engine, int fps)
 {
     m_curveEngine = engine;
+    m_pullFps = (fps > 0) ? fps : 30;
     if (!m_pullTimer) {
         m_pullTimer = new QTimer(this);
         connect(m_pullTimer, &QTimer::timeout, this, &CurveWidget::onPullTimer);
     }
-    m_pullTimer->start(1000 / fps);
+    m_pullTimer->start(1000 / m_pullFps);
 }
 
 void CurveWidget::detachCurveEngine()
@@ -134,6 +145,15 @@ void CurveWidget::setAutoPopulateChannels(bool enabled)
 void CurveWidget::onPullTimer()
 {
     if (!m_curveEngine) return;
+
+    // WF-02: 帧预算节流 —— 距上次实际拉取更新不足一个帧周期则跳过。
+    // 多格容器/多子图下大量 30fps 定时器若每个 tick 都重绘会形成重绘风暴，
+    // 拖垮事件循环。限制每个控件实际拉取+重绘速率 ≤ fps。
+    const qint64 frameBudgetMs = qMax<qint64>(1, 1000 / m_pullFps);
+    if (m_pullThrottle.isValid() && m_pullThrottle.elapsed() < frameBudgetMs) {
+        return;
+    }
+    m_pullThrottle.restart();
 
     auto& registry = TopicRegistry::instance();
 
@@ -423,6 +443,10 @@ void CurveWidget::drawGrid(QPainter& painter, const QRect& rect)
 
 void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
 {
+    // WF-02: 曲线绘制关闭抗锯齿 —— offscreen/纯软渲染下大量 AA 线条（多格×多通道
+    // 可达数万条）成本极高，是重绘风暴/卡死主因。网格与文字仍保留 AA。
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
     if (m_autoScale) {
         updateAutoScale();
     }
@@ -446,8 +470,14 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
             }
 
             // LTTB downsample to pixel width (avoids rendering invisible detail)
+            // 上限 250 点/通道：超采样超出人眼/像素分辨能力，且多格×多通道下
+            // 过量线段是重绘风暴/卡死主因（WF-02）。上限后单格渲染成本大幅下降。
             size_t targetPts = static_cast<size_t>(std::max(2, rect.width()));
-            auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+            if (targetPts > kMaxRenderPointsPerChannel) {
+                targetPts = kMaxRenderPointsPerChannel;
+            }
+            auto downsampled = m_curveEngine->downsampleRange(
+                ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
             if (downsampled.size() < 2) continue;
 
             QPointF prev;
@@ -467,13 +497,15 @@ void CurveWidget::drawCurves(QPainter& painter, const QRect& rect)
             continue;
         }
 
-        // Legacy push mode: render all local data points
+        // Legacy push mode: 仅绘制可见时间窗口 [0, xRangeSeconds] 内的点（WF-14 有界渲染）
         if (ch.data.isEmpty()) continue;
 
         QPointF prev;
         bool first = true;
-        for (const auto& pt : ch.data) {
-            QPointF pixel = dataToPixel(pt, rect);
+        auto it = firstVisiblePoint(ch.data, 0.0);
+        for (; it != ch.data.end(); ++it) {
+            if (it->x() > m_xRangeSeconds) break;
+            QPointF pixel = dataToPixel(*it, rect);
             // WI-801: apply vertical Y-offset
             pixel.ry() -= ch.yOffset;
             if (first) {
@@ -676,7 +708,11 @@ void CurveWidget::mousePressEvent(QMouseEvent* event)
                     auto* ceCh = m_curveEngine->channel(ch.topicId);
                     if (!ceCh || ceCh->count() < 2) continue;
                     size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
-                    auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+                    if (targetPts > kMaxRenderPointsPerChannel) {
+                        targetPts = kMaxRenderPointsPerChannel;
+                    }
+                    auto downsampled = m_curveEngine->downsampleRange(
+                ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
                     if (downsampled.size() < 2) continue;
                     for (const auto& p : downsampled) {
                         double t = (p.first - m_t0) / 1000000.0;
@@ -685,8 +721,10 @@ void CurveWidget::mousePressEvent(QMouseEvent* event)
                         pts.push_back(pixel);
                     }
                 } else if (!ch.data.isEmpty()) {
-                    for (const auto& pt : ch.data) {
-                        QPointF pixel = dataToPixel(pt, plotRect);
+                    auto it = firstVisiblePoint(ch.data, 0.0);
+                    for (; it != ch.data.end(); ++it) {
+                        if (it->x() > m_xRangeSeconds) break;
+                        QPointF pixel = dataToPixel(*it, plotRect);
                         pixel.ry() -= ch.yOffset;
                         pts.push_back(pixel);
                     }
@@ -740,10 +778,15 @@ void CurveWidget::mouseMoveEvent(QMouseEvent* event)
         // Reverse direction: mouse down (dy > 0) -> curve up (yOffset decreases)
         m_channels[m_hitChannelIndex].yOffset -= dy;
 
-        // Show offset tooltip
+        // Show offset tooltip (WF-03: 节流，仅偏移变化超过阈值才更新，避免每次 move 重建提示窗；
+        // 隐藏控件不建 tooltip 窗口 —— offscreen/无窗口场景下建窗开销极高）
         double yoff = m_channels[m_hitChannelIndex].yOffset;
-        QToolTip::showText(event->globalPos(),
-                           QString("偏移: %1 px").arg(yoff, 0, 'f', 1));
+        if (isVisible() && (!m_tooltipShown || std::abs(yoff - m_lastTooltipOffset) > 4.0)) {
+            QToolTip::showText(event->globalPos(),
+                               QString("偏移: %1 px").arg(yoff, 0, 'f', 1));
+            m_lastTooltipOffset = yoff;
+            m_tooltipShown = true;
+        }
         update();
         event->accept();
     } else if (m_panning) {
@@ -773,6 +816,7 @@ void CurveWidget::mouseReleaseEvent(QMouseEvent* event)
         m_hitChannelIndex = -1;
         setCursor(Qt::ArrowCursor);
         QToolTip::hideText();
+        m_tooltipShown = false;
         event->accept();
     } else if (event->button() == Qt::LeftButton && m_rubberBanding) {
         // WI-104: 完成框选缩放
@@ -835,7 +879,11 @@ void CurveWidget::mouseDoubleClickEvent(QMouseEvent* event)
             auto* ceCh = m_curveEngine->channel(ch.topicId);
             if (!ceCh || ceCh->count() < 2) continue;
             size_t targetPts = static_cast<size_t>(std::max(2, plotRect.width()));
-            auto downsampled = m_curveEngine->downsample(ch.topicId, targetPts);
+            if (targetPts > kMaxRenderPointsPerChannel) {
+                targetPts = kMaxRenderPointsPerChannel;
+            }
+            auto downsampled = m_curveEngine->downsampleRange(
+                ch.topicId, m_t0, m_t0 + static_cast<uint64_t>(m_xRangeSeconds * 1e6), targetPts);
             if (downsampled.size() < 2) continue;
             for (const auto& p : downsampled) {
                 double t = (p.first - m_t0) / 1000000.0;

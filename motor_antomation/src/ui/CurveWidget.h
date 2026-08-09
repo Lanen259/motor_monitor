@@ -138,6 +138,9 @@ private:
     // Time axis change notification (WI-103: delegates to manager or emits signal)
     void notifyTimeAxisChange();
 
+    // WF-02: 每通道每帧渲染点数上限（LTTB 目标点数），控制多格×多通道下的线段总量
+    static constexpr size_t kMaxRenderPointsPerChannel = 250;
+
     QVector<Channel> m_channels;
     QString m_yAxisLabel;
     QString m_xAxisLabel;
@@ -163,10 +166,14 @@ private:
     bool m_curvePanning = false;       // currently dragging a curve vertically
     int m_hitChannelIndex = -1;        // which curve is being panned
     int m_curvePanStartY = 0;
+    double m_lastTooltipOffset = 0.0;  // WF-03: 曲线平移 tooltip 节流（避免每次 move 建窗）
+    bool m_tooltipShown = false;
 
     // CurveEngine pull mode
     CurveEngine* m_curveEngine = nullptr;
     QTimer* m_pullTimer = nullptr;
+    int m_pullFps = 30;                // WF-02: 记录拉取 fps 用于帧预算节流
+    QElapsedTimer m_pullThrottle;      // WF-02: 距上次实际拉取更新不足一个帧周期则跳过
     bool m_autoPopulateChannels = true;  // true = legacy auto-sync, false = externally managed
 
     // Frame timing (WI-010)

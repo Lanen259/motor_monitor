@@ -74,6 +74,7 @@ private slots:
 private:
     void setupUi();
     void rebuildChannelBar();
+    void appendChannel(uint32_t topicId);  // WF-03: 只追加通道数据，不触发 rebuildChannelBar
     void updateSyncButtonStyle();
     QPixmap makeColorDot(const QColor& color, int size = 10) const;
 
