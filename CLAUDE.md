@@ -136,3 +136,18 @@ git add <名单> && git commit     # 直接改、直接提交到 master
 | 手册 / Bug / 设计文档同步 | 集成代理（master） |
 
 完整归属矩阵与合并纪律同源备份在 `.conductor/ledger.md` 的 "Worktree Topology" 一节。
+
+---
+
+## 9. 工作方式（Superpowers）
+
+本项目使用 Superpowers 工作流。开始任何任务前，先判断并调用相关技能，不要直接动手：
+
+- 新功能 / 行为改动 → brainstorming（先澄清需求）→ writing-plans
+- Bug 修复 → systematic-debugging
+- 写代码 → test-driven-development
+- 多任务计划执行 → subagent-driven-development 或 dispatching-parallel-agents
+- 代码完成 → requesting-code-review；收到意见 → receiving-code-review
+- 宣称完成前 → verification-before-completion
+
+**优先级：本文件的指令 > 技能 > 默认行为。除非用户明确说跳过技能，否则不要跳过。**
