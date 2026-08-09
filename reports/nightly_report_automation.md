@@ -10,6 +10,7 @@
 | 2 | Phase 2 + Phase 3 | 复现测试 + G1-G7 修复 + A-16 真根因 | ✅ 3 个 UI 测试全绿、gdb 实证 A-17 死循环 |
 | 3 | Phase 4 压力测试 + 完整门禁 | stress ×3 种子 + 18/18 ctest | ✅ 看门狗零触发、gate PASSED |
 | 4 | 代码审查 + H1 修复 | H1 元类型 + 构造顺序 + 按钮刷新 + 守卫复位 | ✅ H1 回归测试绿、最终 gate PASSED |
+| 5 | CI 失败根因修复 | `.gitignore` 的 `ui_*.h` 模式误忽略 `ui_watchdog.h` → 重命名 `watchdog.h` | ✅ CI 绿（c54701b） |
 
 ---
 
@@ -94,7 +95,8 @@
 | A4 | 统一修复完成，同根因同方案 | git log（c18098e，G1-G7 + H1） | ✅ |
 | A5 | 压力测试 3 种子全绿 | ctest StressAutomationUi_seed1/2/3 | ✅ |
 | A6 | gate 全绿（编译+测试） | [GATE] PASSED | ✅ |
-| A7 | 最终报告 + push 完成 | reports/nightly_report_automation.md + git ls-remote（domain/automation = c18098e） | ✅ |
+| A7 | 最终报告 + push 完成 | reports/nightly_report_automation.md + git ls-remote（domain/automation = c54701b） | ✅ |
+| D6 | GitHub CI 绿 | Actions 页面（c54701b1 = success） | ✅ |
 
 ## 8. 遗留事项
 
