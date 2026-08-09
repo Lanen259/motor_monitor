@@ -115,6 +115,8 @@ add_test(NAME TestVofaParser COMMAND TestVofaParser)
 add_executable(TestAutomationEngine
     unit/automation/test_automation_engine.cpp
     ${CMAKE_SOURCE_DIR}/src/automation/AutomationEngine.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/TestRunner.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
     ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
     ${CMAKE_SOURCE_DIR}/src/databus/DataBus.cpp
 )
@@ -129,6 +131,12 @@ target_link_libraries(TestAutomationEngine PRIVATE
 )
 
 add_test(NAME TestAutomationEngine COMMAND TestAutomationEngine)
+
+# 测试用例 JSON 夹具位于源码树 tests/unit/automation/（TEST_DATA_DIR 期望
+# "<dataDir>/automation/*.json"，故指向 tests/unit）
+set_tests_properties(TestAutomationEngine PROPERTIES
+    ENVIRONMENT "TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/unit"
+)
 
 # VariableScope unit test (WI-202)
 add_executable(TestVariableScope

@@ -1,5 +1,5 @@
 #include <QtTest/QtTest>
-#include "../../src/automation/ExpressionEngine.h"
+#include "../../../src/automation/ExpressionEngine.h"
 #include <cmath>
 #include <limits>
 #include <unordered_map>

@@ -11,6 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 与 qmake 的 INCLUDEPATH += src 对齐，避免模块间头文件包含传递问题
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
+# Qt 元对象编译：全树启用 AUTOMOC（多数模块头文件含 Q_OBJECT，
+# 部分 cpp 直接 #include "xxx.moc"；手写 moc 清单不可持续）
+set(CMAKE_AUTOMOC ON)
+
 # 严格编译选项（-Wall -Wextra -Wpedantic -Werror）默认关闭：
 # 首次跑通门禁后再取消下面一行注释，把 warning 当 error 强制清零。
 # include(${CMAKE_CURRENT_LIST_DIR}/cmake/CompilerSettings.cmake)
@@ -19,6 +23,9 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 find_package(Qt5 REQUIRED COMPONENTS
     Core Widgets Qml SerialPort SerialBus Network Test
 )
+
+# 必须在顶层启用 CTest，否则从构建根目录跑 ctest 找不到子目录注册的测试
+enable_testing()
 
 # 所有库模块（按依赖顺序，见 src/CMakeLists.txt）+ 测试树
 add_subdirectory(src)

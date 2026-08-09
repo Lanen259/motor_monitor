@@ -43,8 +43,12 @@ cmake --build build\ci-tests -j%NUMBER_OF_PROCESSORS%
 if errorlevel 1 goto :fail
 
 echo [GATE] ==== 3/3 run tests (ctest) ====
-ctest --test-dir build\ci-tests --output-on-failure
-if errorlevel 1 goto :fail
+ctest --test-dir build\ci-tests --output-on-failure > build\ctest_log.txt 2>&1
+set "CTEST_ERR=%errorlevel%"
+type build\ctest_log.txt
+if not "%CTEST_ERR%"=="0" goto :fail
+REM 防御假阳性：ctest 找不到任何测试时退出码仍是 0，必须显式拦下
+findstr /c:"No tests were found" build\ctest_log.txt >nul 2>nul && goto :fail_none
 
 echo.
 echo [GATE] PASSED: compile + all tests green, safe to merge to master.
@@ -53,6 +57,11 @@ exit /b 0
 :fail
 echo.
 echo [GATE] FAILED: one or more steps failed. Fix and re-run.
+exit /b 1
+
+:fail_none
+echo.
+echo [GATE] FAILED: ctest reported "No tests were found" — test registration is broken.
 exit /b 1
 
 :err_mingw
