@@ -13,6 +13,7 @@
 #include <QSplitter>
 #include <QHeaderView>
 #include <QFileDialog>
+#include <QFile>
 #include <QMessageBox>
 #include <QDateTime>
 #include <QJsonDocument>
@@ -87,20 +88,31 @@ AutomationWidget::AutomationWidget(AutomationEngine* engine, QWidget* parent)
     if (m_engine) {
         connectEngine(m_engine);
     }
-    updateButtonStates(false, false);
 
     // Default to flowchart view
     if (m_viewStack) {
         m_viewStack->setCurrentIndex(1);  // flowchart page
         m_toggleViewBtn->setText(QStringLiteral("表格视图"));
     }
+
+    // 必须先切到流程图视图再计算按钮状态：updateButtonStates 依当前视图模式
+    // 判定 hasCase，若在 index=0（表格）时先调用，运行按钮会被永久禁用
+    // （审查 H1 暴露的存量 bug：流程图模式从未启用运行按钮）。
+    updateButtonStates(false, false);
 }
 
 AutomationWidget::~AutomationWidget()
 {
-    // Stop any running flow
+    // 停止运行中的流程并尽量等 worker 线程退出，避免析构后 worker 仍
+    // 调用引擎/作用域（A-05）。worker 阻塞于跨线程回调时 wait 会超时，
+    // 属残留窗口，记录为"需集成代理处理"（MainWindow 引擎生命周期）。
     if (m_flowRunner) {
         m_flowRunner->stop();
+        QThread* wt = m_flowRunner->thread();
+        if (wt && wt != this->thread()) {
+            wt->quit();
+            wt->wait(2000);
+        }
     }
 }
 
@@ -353,6 +365,10 @@ void AutomationWidget::setupFlowUi(QWidget* page)
     m_varEditor->setMaximumHeight(200);
     rightLayout->addWidget(m_varEditor);
 
+    // 绑定变量表作用域（A-14）：此前从未调用 setScope → 变量表静默失效
+    m_varScope = new VariableScope(this);
+    m_varEditor->setScope(m_varScope);
+
     pageLayout->addWidget(rightSidebar);
 
     // --- 3-way sync: bind FlowCanvas to data model ---
@@ -389,24 +405,24 @@ void AutomationWidget::setupFlowUi(QWidget* page)
     // Params changed in panel → refresh FlowNodeItem in canvas
     connect(m_paramPanel, &NodeParamPanel::paramsChanged,
             this, [this]() {
-                // The FlowNode* in m_currentFlowGraph was already modified
-                // by the param panel. Now refresh the scene item.
+                // 只刷新当前选中的节点项：O(nodes+scene) 单节点查找，
+                // 替代原先"全场景×全图"逐项扫描（A-11/P5 按键卡顿源）。
                 if (m_flowCanvas) {
-                    const QList<QGraphicsItem*> items = m_flowCanvas->scene()->items();
-                    for (auto* item : items) {
-                        if (auto* nodeItem = dynamic_cast<FlowNodeItem*>(item)) {
-                            // Find matching node in m_currentFlowGraph
-                            for (const auto& gn : m_currentFlowGraph.nodes) {
-                                if (gn.id == nodeItem->node().id) {
-                                    nodeItem->updateFromNode(gn);
-                                    break;
-                                }
-                            }
-                        }
+                    const FlowNodeItem* sel = m_flowCanvas->selectedNode();
+                    if (sel) {
+                        m_flowCanvas->refreshNodeItem(sel->node().id);
                     }
                 }
                 emit m_flowCanvas->graphChanged();
             });
+
+    // 图结构变化（添加/删除节点、连线）→ 刷新按钮状态：
+    // 修复"双击节点库添加节点后运行按钮不启用"的存量功能缺陷。
+    connect(m_flowCanvas, &FlowCanvas::graphChanged, this, [this]() {
+        bool running = m_flowRunActive || (m_engine && m_engine->isRunning());
+        bool paused = !m_flowRunActive && m_engine && m_engine->isPaused();
+        updateButtonStates(running, paused);
+    });
 }
 
 // ============================================================
@@ -993,6 +1009,14 @@ bool AutomationWidget::loadFlowGraph(const QString& jsonPath)
         m_flowCanvas->setFlowGraph(&m_currentFlowGraph);
     }
 
+    // 同步图声明的变量到变量表作用域（A-14）
+    if (m_varScope) {
+        for (const auto& varName : m_currentFlowGraph.variables)
+            if (!m_varScope->has(varName))
+                m_varScope->setNumber(varName, 0.0);
+        if (m_varEditor) m_varEditor->refreshTable();
+    }
+
     return true;
 }
 
@@ -1040,6 +1064,14 @@ void AutomationWidget::runFlowGraph()
         return;
     }
 
+    // 重入守卫（A-04）：已有流程在运行时不重复启动，避免两个 FlowRunner
+    // 并发驱动同一引擎（按钮已禁用，此处是防御非 UI 路径的重复调用）
+    if (m_flowRunActive) {
+        qWarning() << "AutomationWidget: flow already running, ignore re-run";
+        return;
+    }
+    m_flowRunActive = true;
+
     m_stepLog->clear();
     m_stepLog->appendPlainText(
         QString("[%1] 开始流程图: %2")
@@ -1067,6 +1099,11 @@ void AutomationWidget::runFlowGraph()
 
     m_flowRunner = new FlowRunner(m_engine);
 
+    // 跨线程 queued 投递 FlowRunResult 需注册元类型（审查 H1）：
+    // 不注册则 runnerFinished 从 worker 投递到 UI 失败，完成回调永不执行。
+    // 用默认全限定名注册，与 moc 生成的参数类型名 MotorStudio::FlowRunResult 匹配。
+    qRegisterMetaType<FlowRunResult>();
+
     // Connect FlowRunner signals
     connect(m_flowRunner, &FlowRunner::nodeStarted,
             this, &AutomationWidget::onFlowRunnerNodeStarted,
@@ -1090,14 +1127,12 @@ void AutomationWidget::runFlowGraph()
     worker->runner = m_flowRunner;
     worker->graph = m_currentFlowGraph;
 
-    // Build ExecutionContext
-    VariableScope* scope = new VariableScope();
-    // Declare graph variables in scope
+    // Build ExecutionContext（复用变量表作用域，A-14）
+    if (!m_varScope) m_varScope = new VariableScope(this);
     for (const auto& varName : m_currentFlowGraph.variables) {
-        scope->setNumber(varName, 0.0);
+        if (!m_varScope->has(varName)) m_varScope->setNumber(varName, 0.0);
     }
-
-    worker->ctx.variables = scope;
+    worker->ctx.variables = m_varScope;
     worker->ctx.engine = m_engine;
     worker->ctx.log = [](const std::string&) {
         // Log messages come through Qt signals (FlowRunner::logMessage)
@@ -1110,12 +1145,14 @@ void AutomationWidget::runFlowGraph()
     // 线程结束后在主线程统一清理，避免 deleteLater 在已退出的事件循环中不生效
     FlowRunner* runnerToClean = m_flowRunner;
     connect(workerThread, &QThread::finished, this,
-            [this, workerThread, worker, scope, runnerToClean]() {
+            [this, workerThread, worker, runnerToClean]() {
+        // 守卫复位与线程生命周期解耦（审查 M2）：即使 runnerFinished 因异常
+        // 未送达，线程结束也强制复位，避免"运行一次后按钮永久锁定"。
+        m_flowRunActive = false;
         if (m_flowRunner == runnerToClean) {
             m_flowRunner = nullptr;
         }
         delete worker;
-        delete scope;
         delete runnerToClean;
         delete workerThread;
     });
@@ -1174,6 +1211,8 @@ void AutomationWidget::onFlowRunnerNodeCompleted(const std::string& nodeId, bool
 
 void AutomationWidget::onFlowRunnerFinished(const FlowRunResult& result)
 {
+    m_flowRunActive = false;   // 运行结束，解除重入守卫（A-04）
+
     m_statusLabel->setText(result.passed ? "PASSED" : "FAILED");
     m_statusLabel->setStyleSheet(
         QString("color: %1; font-size: 13px; font-weight: bold;")

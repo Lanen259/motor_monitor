@@ -267,14 +267,19 @@ void NodeParamPanel::clearNode()
 
 void NodeParamPanel::clearForm()
 {
-    while (m_formLayout->rowCount() > 0) {
+    // 注意：不能以 rowCount()>0 为循环条件。QFormLayout 含整行控件/空标签行时，
+    // takeAt(0) 会在 count() 先归零而 rowCount() 仍 > 0 时返回 null（二者失同步），
+    // 造成死循环 —— 这是 SYM-1/2/3"卡死"的实证根因（gdb: clearForm 无限循环）。
+    // 以 takeAt(0) 返回 null 为终止条件；用 count() 做前置判断避免
+    // 对空布局调用 takeAt(0)（Qt 会告警 "Invalid index 0"）。
+    while (m_formLayout->count() > 0) {
         QLayoutItem* item = m_formLayout->takeAt(0);
-        if (item) {
-            if (item->widget()) {
-                delete item->widget();
-            }
-            delete item;
+        if (QWidget* w = item->widget()) {
+            w->disconnect();
+            w->hide();
+            w->deleteLater();
         }
+        delete item;   // QLayoutItem 不拥有 QWidget，这里不会二次删除
     }
 }
 
@@ -1130,17 +1135,34 @@ void NodeParamPanel::buildForm(const FlowNode& node)
             if (col == 0 || col == 1) {
                 auto* ki = paramTable->item(row, 0);
                 auto* vi = paramTable->item(row, 1);
-                if (ki && vi && m_currentNode) {
-                    std::string k = ki->text().toStdString();
-                    std::string v = vi->text().toStdString();
-                    bool found = false;
-                    for (auto& p : m_currentNode->params) {
-                        if (p.first == k) { p.second = v; found = true; break; }
-                    }
-                    if (!found && !k.empty())
-                        m_currentNode->params.emplace_back(k, v);
-                    emit paramsChanged();
+                if (!ki || !vi || !m_currentNode) return;
+
+                // 参数管理表行 ↔ 节点 params 中"可见参数"按序一一对应，
+                // 直接原位更新该行对应的参数条目，避免"按新键查找"在改键时
+                // 产生重复条目（A-15）。
+                std::vector<size_t> visibleIdx;
+                for (size_t i = 0; i < m_currentNode->params.size(); ++i) {
+                    const auto& k0 = m_currentNode->params[i].first;
+                    if (!k0.empty() && k0[0] != '_') visibleIdx.push_back(i);
                 }
+                if (!(row >= 0 && row < static_cast<int>(visibleIdx.size()))) return;
+
+                auto& p = m_currentNode->params[visibleIdx[row]];
+                if (col == 0) {
+                    const std::string k = ki->text().trimmed().toStdString();
+                    if (k.empty() || k[0] == '_') {
+                        // 空键 / "_" 前缀为内部保留：回退 UI 显示到原键，不写模型，
+                        // 避免该参数从"可见映射"消失导致后续行编辑脱钩（审查 L1）。
+                        paramTable->blockSignals(true);
+                        ki->setText(QString::fromStdString(p.first));
+                        paramTable->blockSignals(false);
+                        return;
+                    }
+                    p.first = k;
+                } else {
+                    p.second = vi->text().toStdString();
+                }
+                emit paramsChanged();
             }
         });
 

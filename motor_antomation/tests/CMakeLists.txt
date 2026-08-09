@@ -237,3 +237,84 @@ target_link_libraries(TestMockMcuCurve PRIVATE
 )
 
 add_test(NAME TestMockMcuCurve COMMAND TestMockMcuCurve)
+
+# === 夜间防卡死自测：自动化域 UI 交互回归（Phase 2）===
+# 看门狗头文件位于 tests/common/（共享规格 §2.2），通过 tests/ 包含目录提供。
+# 全部 UI 测试：QT_QPA_PLATFORM=offscreen（环境变量已在 gate 侧设置），
+# ctest 单独为交互用例设 TIMEOUT 60 防挂起。
+
+# NodeParamPanel 交互（A-01/A-02 UAF + BUG-001/004 闭环 + A-15）
+add_executable(TestNodeParamPanelInteraction
+    unit/ui/test_node_param_panel.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+target_include_directories(TestNodeParamPanelInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(TestNodeParamPanelInteraction PRIVATE
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::Test
+    MotorStudioUi
+)
+add_test(NAME TestNodeParamPanelInteraction COMMAND TestNodeParamPanelInteraction)
+set_tests_properties(TestNodeParamPanelInteraction PROPERTIES TIMEOUT 60)
+
+# FlowCanvas / AutomationWidget 交互（A-03/A-06/A-07 + SYM-1/2/3）
+add_executable(TestFlowCanvasInteraction
+    unit/ui/test_flow_canvas.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+target_include_directories(TestFlowCanvasInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(TestFlowCanvasInteraction PRIVATE
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::Test
+    MotorStudioUi
+)
+add_test(NAME TestFlowCanvasInteraction COMMAND TestFlowCanvasInteraction)
+set_tests_properties(TestFlowCanvasInteraction PROPERTIES TIMEOUT 60)
+
+# VariableEditorPanel 交互 + 作用域接线（A-14）
+add_executable(TestVariableEditorPanelInteraction
+    unit/ui/test_variable_editor_panel.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+target_include_directories(TestVariableEditorPanelInteraction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(TestVariableEditorPanelInteraction PRIVATE
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::Test
+    MotorStudioUi
+)
+add_test(NAME TestVariableEditorPanelInteraction COMMAND TestVariableEditorPanelInteraction)
+set_tests_properties(TestVariableEditorPanelInteraction PROPERTIES TIMEOUT 60)
+
+# === 夜间防卡死自测：Debug 仿真压力测试（Phase 4）===
+# 固定种子随机交互 ≥500 次 + 事件循环看门狗（300ms）。3 个不同种子各一轮。
+add_executable(StressAutomationUi
+    stress/stress_automation_ui.cpp
+    ${CMAKE_SOURCE_DIR}/src/databus/Topic.cpp
+    ${CMAKE_SOURCE_DIR}/src/automation/ReportGenerator.cpp
+)
+target_include_directories(StressAutomationUi PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(StressAutomationUi PRIVATE
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::Test
+    MotorStudioUi
+)
+add_test(NAME StressAutomationUi_seed1 COMMAND StressAutomationUi --seed 1)
+add_test(NAME StressAutomationUi_seed2 COMMAND StressAutomationUi --seed 2)
+add_test(NAME StressAutomationUi_seed3 COMMAND StressAutomationUi --seed 3)
+set_tests_properties(StressAutomationUi_seed1 StressAutomationUi_seed2 StressAutomationUi_seed3
+    PROPERTIES TIMEOUT 600)

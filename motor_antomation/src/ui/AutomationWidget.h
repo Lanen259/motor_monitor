@@ -27,6 +27,7 @@ class NodeLibraryPanel;
 class NodeParamPanel;
 class FlowRunner;
 class VariableEditorPanel;
+class VariableScope;
 struct FlowRunResult;
 
 // Status per step for coloring the table rows
@@ -132,7 +133,9 @@ private:
     NodeLibraryPanel*   m_nodeLibrary   = nullptr;
     NodeParamPanel*     m_paramPanel    = nullptr;
     VariableEditorPanel* m_varEditor    = nullptr;
+    VariableScope*      m_varScope      = nullptr;   // 变量表绑定作用域（A-14）
     FlowRunner*         m_flowRunner    = nullptr;
+    bool                m_flowRunActive = false;     // 运行重入守卫（A-04）
     FlowGraph           m_currentFlowGraph;
 };
 

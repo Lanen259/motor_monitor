@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QMetaType>
 #include <atomic>
 #include <functional>
 #include <chrono>
@@ -119,3 +120,8 @@ private:
 };
 
 } // namespace MotorStudio
+
+// 跨线程 queued 投递 FlowRunResult 必须注册元类型（审查 H1）：
+// FlowRunner 运行在工作线程，runnerFinished 经 QueuedConnection 投递到 UI 线程，
+// 未注册则 Qt 丢弃该调用 → onFlowRunnerFinished 永不执行。
+Q_DECLARE_METATYPE(MotorStudio::FlowRunResult)

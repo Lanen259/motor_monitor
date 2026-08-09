@@ -42,13 +42,10 @@ TestRunner::TestRunner(AutomationEngine* engine, QObject* parent)
 
 TestRunner::~TestRunner()
 {
-    // Move engine back to the calling thread so the owner can destroy it safely.
-    // QObject::moveToThread must be invoked from the thread that OWNS the object
-    // (the worker thread here), so we run the move-back on the engine's own thread
-    // via a blocking queued call. Calling it from the destructor's thread directly
-    // is a no-op + "not the object's thread" warning, and leaves the engine bound
-    // to a QThread that is about to be deleted → segfault.
-    if (d->engine && d->workerThread && d->workerThread->isRunning()) {
+    // 仅在运行已结束（!d->running）时才做引擎线程迁移：
+    // 运行中销毁会阻塞等待一个仍在执行的工作线程（BlockingQueuedConnection
+    // 无超时）→ 死锁。运行中的情况交由调用方先 stop()。
+    if (d->engine && d->workerThread && d->workerThread->isRunning() && !d->running) {
         QObject* engine = d->engine;
         QThread* destThread = QThread::currentThread();
         QMetaObject::invokeMethod(d->engine, [engine, destThread]() {

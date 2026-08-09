@@ -5,11 +5,12 @@
 
 ## 0. 结论摘要
 
-- 历史 BUG-001/004（`NodeParamPanel::buildForm` removeRow/takeRow 双重释放）在**当前源码中已闭环**：`buildForm` 已改为 `clearForm()`（takeAt+delete）＋重建，无 `removeRow` 悬垂复用。SYM-1/2 的直接崩溃路径（buildForm 堆损坏）不再成立（见 §4 复现说明）。
-- **但审计发现 2 个仍活跃的 P1（use-after-free）** + 1 个 P1 线程竞态 + 多个 P4/P6，是当前"卡死/崩溃"的真实来源：
-  1. `NodeParamPanel::clearForm` 同步 `delete` 正在发射 `clicked()` 的发送者按钮（删除参数行 / 添加参数）→ use-after-free（两个独立 lens 确认，最高危）。
-  2. `FlowCanvas::deleteSelectedItems` 在连线拖拽中删除节点 → `m_dragFromNode` 悬垂 + `m_dragLine` 残留场景 → 下一次 mouseMove 解引用已释放节点 → 崩溃。
-  3. `AutomationWidget::runFlowGraph` 无重入守卫：新一轮运行在旧 worker 线程仍在执行时启动 → 两个 FlowRunner 并发调用引擎 executeStep。
+- 历史 BUG-001/004（`NodeParamPanel::buildForm` removeRow/takeRow 双重释放）在**当前源码中已闭环**（无 removeRow 悬垂复用），**但 BUG-004 修复引入的 `clearForm` 写法在本表单结构下不收敛**：`while (rowCount()>0){takeAt(0);}` 在含整行/空标签行时 `takeAt` 先返回 null 而 `rowCount()` 仍 > 0 → **死循环**（A-17，gdb 实证）→ **任何第二次 buildForm 即 UI 线程卡死**。这是 SYM-1/2/3「卡死」的当前活跃根因。
+- 审计另发现 2 个活跃 P1（use-after-free） + 1 个 P1 线程竞态 + 多个 P4/P6：
+  1. **A-17（最高危，实证）**：`clearForm` 死循环 → 每次表单重建都卡死。
+  2. `NodeParamPanel::clearForm` 同步 `delete` 正在发射 `clicked()` 的发送者按钮（删除参数行 / 添加参数）→ use-after-free（两个独立 lens 确认）。
+  3. `FlowCanvas::deleteSelectedItems` 在连线拖拽中删除节点 → `m_dragFromNode` 悬垂 + `m_dragLine` 残留场景 → 下一次 mouseMove 解引用已释放节点 → 崩溃。
+  4. `AutomationWidget::runFlowGraph` 无重入守卫：新一轮运行在旧 worker 线程仍在执行时启动 → 两个 FlowRunner 并发调用引擎 executeStep。
 - **P6 数据/UI 不同步**：`deleteSelectedItems` 删场景不删 `m_flowGraph` 数据模型 → 幻影节点被执行/被编辑。
 - **功能缺口**：`VariableEditorPanel::setScope` 从未被调用 → 变量表完全失效（静默 no-op）。
 
@@ -33,14 +34,31 @@
 | A-14 | VariableEditorPanel | **P6/功能缺口** | VariableEditorPanel.cpp:143 / AutomationWidget.cpp:352 | `setScope` 全源码无调用点 → `m_scope` 恒为 null → 添加/删除/编辑变量全部静默失败 | 中 |
 | A-15 | NodeParamPanel | 数据完整性 | NodeParamPanel.cpp:1136 | 参数管理表编辑"键"列 → 找不到新键则 emplace_back 重复项，旧键条目残留 | 低 |
 | A-16 | TestAutomationEngine（域内测试） | **P1** 线程竞态挂起 | AutomationEngine.cpp:261-265、TestRunner.cpp:54-56 | `run()` 解锁后继续用 `const auto& testCase` 引用；`TestRunner` 析构 `BlockingQueuedConnection` 无超时 → 偶发无限挂起/失败（exit 4） | 中 |
+| A-17 | NodeParamPanel | **P5** UI 线程死循环（实证 SYM 卡死根因） | NodeParamPanel.cpp:270-272 | **任何第二次 buildForm**（切换节点 setNode / 删除参数行 / 添加参数）→ `clearForm` 的 `while (rowCount() > 0) { takeAt(0); }`：当表单含整行控件（addRow(QWidget*)/addRow(QString,field)）时，QFormLayout 的 `count()` 与 `rowCount()` 失同步，`takeAt(0)` 先返回 null 而 `rowCount()` 仍 > 0 → **死循环**。gdb 实证：`clearForm` 无限循环、零 CPU 占用、`QFormLayout::takeAt: Invalid index 0` 警告洪泛 | 高 |
+
+### 2.1 A-17 实证（Phase 2 复现用例运行发现）
+
+用 gdb 对 `testProbeHang`（setNode ×2）抓栈，确认挂起位置：
+
+```
+#11 QFormLayout::takeAt(int)   ← "QFormLayout::takeAt: Invalid index 0" 无限循环
+#12 NodeParamPanel::clearForm  NodeParamPanel.cpp:271
+#13 NodeParamPanel::buildForm  NodeParamPanel.cpp:354
+#14 NodeParamPanel::setNode    NodeParamPanel.cpp:255
+#15 testProbeHang              test_node_param_panel.cpp:237
+```
+
+- 进程 `user 0m0.000s`（阻塞非自旋）；`takeAt: Invalid index 0` 警告持续洪泛。
+- **该缺陷是 SYM-1/2/3「卡死」的真实、当前活跃根因**：任何触发表单重建的操作（切换节点、删参数行、添加参数）都会进入死循环。历史 BUG-001/004 的 `removeRow/takeRow` 双重释放是 2026-08-08 旧根因，但 **BUG-004 修复引入的 `clearForm` 写法在本表单结构下不收敛**。
+- 修复方案：循环条件改为 `while (QLayoutItem* item = takeAt(0))`（以 null 为终止）；widget 用 `disconnect()+hide()+deleteLater()`（同时解决 A-01/A-02 删除信号发送者 UAF）。
 
 ## 2. SYM 症状 → 根因映射
 
 | 症状 | 结论 | 对应缺陷/闭环 |
 |---|---|---|
-| SYM-1 输入→Enter→100ms 内拖动→卡死 | 历史 buildForm 双重释放（BUG-004）已修（clearForm+重建）；当前最接近的活跃 P1 是 A-01/A-02（参数表删除/添加按钮 UAF，Enter 提交单元格编辑→cellChanged→paramsChanged 链路也参与）+ A-03（拖拽期删除）。SYM-1 时序整体由回归用例兜底（见 Phase 2） | A-01/A-02/A-03 |
-| SYM-2 输入后不按 Enter 点别处/拖动→偶发卡死 | 切换节点/清空选择路径中 `setNode`→`buildForm`→`clearForm` 删除旧表 → 若旧表单元格编辑器打开或被按 Enter 提交则 UAF（A-01 同根）；拖动期删除节点则 A-03 | A-01/A-03 |
-| SYM-3 快速连续双击添加节点→卡死/崩溃 | 添加节点 churn（A-07）+ `m_currentNode` 矢量失效隐患（A-13）+ 快速添加后立即编辑触发 clearForm 删发送者（A-01）。历史 BUG-001 已闭环，本路径由 A-07/A-13 加固 | A-07/A-13 |
+| SYM-1 输入→Enter→100ms 内拖动→卡死 | **A-17 clearForm 死循环（实证根因）**：输入/Enter 后任何触发重建的操作（参数增删、切换节点）进入死循环；叠加 A-01/A-02（重建删除信号发送者 UAF） | A-17/A-01/A-02/A-03 |
+| SYM-2 输入后不按 Enter 点别处/拖动→偶发卡死 | **A-17**：点击别处 → 切换/清空选择 → setNode/clearNode → buildForm → clearForm 死循环；拖动期删除节点则 A-03 | A-17/A-03 |
+| SYM-3 快速连续双击添加节点→卡死/崩溃 | **A-17**：每次添加 → nodeSelected → setNode → buildForm → 第二次起 clearForm 死循环；历史 BUG-001 已闭环但 A-17 使添加即卡死 | A-17/A-07 |
 
 ## 3. 已排除项（审计明确否定的假设）
 

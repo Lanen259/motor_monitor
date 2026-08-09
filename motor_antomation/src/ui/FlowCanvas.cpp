@@ -3,6 +3,8 @@
 #include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QInputDialog>
+#include <QSet>
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 
@@ -890,24 +892,22 @@ void FlowCanvas::addNodeFromPalette(const std::string& nodeType)
     node.posX = viewCenter.x() - FlowNodeItem::NODE_WIDTH / 2.0 + (m_nextNodeId % 5) * 30.0;
     node.posY = viewCenter.y() + (m_nextNodeId % 5) * 40.0;
 
+    // 先入数据模型，再触发选择：保证 setSelected 引发的 selectionChanged
+    // 能在模型中查到该节点 → 单次 emit nodeSelected（消除"先 clearNode 再
+    // setNode"的抖动，A-07），也避免 push_back 后再持有指向旧节点的指针。
+    if (m_flowGraph) m_flowGraph->nodes.push_back(node);
+
     auto* item = new FlowNodeItem(node);
     m_scene->addItem(item);
 
-    // Select the new node
+    // Select the new node → onSceneSelectionChanged 在模型中查到本节点，
+    // emit nodeSelected(id, &nodes.back())
     m_scene->clearSelection();
     item->setSelected(true);
 
     emit graphChanged();
 
-    // --- 3-way sync: push to FlowGraph data model ---
-    if (m_flowGraph) {
-        m_flowGraph->nodes.push_back(node);
-    }
-
-    // Auto-emit nodeSelected with pointer so param panel opens immediately
     if (m_flowGraph && !m_flowGraph->nodes.empty()) {
-        FlowNode* graphNode = &m_flowGraph->nodes.back();
-        emit nodeSelected(node.id, graphNode);
         emit nodeParamEditRequested(node.id);
     }
 }
@@ -1025,43 +1025,54 @@ void FlowCanvas::deleteSelectedItems()
     QList<QGraphicsItem*> sel = m_scene->selectedItems();
     if (sel.isEmpty()) return;
 
-    // Block signals during batch delete
-    m_scene->blockSignals(true);
-
+    // 收集待删项：选中的节点/边 + 与待删节点相连的入射边。
+    // 入射边随端点节点一起删，避免边保留指向已释放节点的悬垂指针（P1）。
+    QSet<QGraphicsItem*> toDelete;
+    bool nodeDeleted = false;
     for (auto* item : sel) {
-        // Remove both nodes and edges
-        if (dynamic_cast<FlowNodeItem*>(item) || dynamic_cast<FlowEdgeItem*>(item)) {
-            m_scene->removeItem(item);
-            delete item;
-        }
+        if (auto* ni = dynamic_cast<FlowNodeItem*>(item)) { toDelete.insert(ni); nodeDeleted = true; }
+        else if (auto* ei = dynamic_cast<FlowEdgeItem*>(item)) toDelete.insert(ei);
+    }
+    const QList<QGraphicsItem*> all = m_scene->items();
+    for (auto* item : all) {
+        if (auto* ei = dynamic_cast<FlowEdgeItem*>(item))
+            if (toDelete.contains(ei->fromNode()) || toDelete.contains(ei->toNode()))
+                toDelete.insert(ei);
     }
 
+    // 记录待删 id（用于数据模型同步，P6）
+    std::vector<std::string> delNodeIds, delEdgeIds;
+    for (auto* item : toDelete) {
+        if (auto* ni = dynamic_cast<FlowNodeItem*>(item)) delNodeIds.push_back(ni->node().id);
+        else if (auto* ei = dynamic_cast<FlowEdgeItem*>(item)) delEdgeIds.push_back(ei->edge().id);
+    }
+
+    // 拖拽源节点被删 → 取消连线拖拽，避免 m_dragFromNode 悬垂 + m_dragLine 残留（A-03）
+    if (m_dragFromNode && toDelete.contains(m_dragFromNode)) cancelEdgeDrag();
+
+    m_scene->blockSignals(true);
+    for (auto* item : toDelete) {
+        m_scene->removeItem(item);
+        delete item;
+    }
     m_scene->blockSignals(false);
 
-    // Now also delete any edge whose source or target was deleted
-    QList<QGraphicsItem*> remaining = m_scene->items();
-    QList<FlowEdgeItem*> orphanEdges;
-    for (auto* item : remaining) {
-        if (auto* edgeItem = dynamic_cast<FlowEdgeItem*>(item)) {
-            if (!edgeItem->fromNode() || !edgeItem->toNode()) {
-                orphanEdges.append(edgeItem);
-            }
-            // Also check if the node items are still in the scene
-            bool fromInScene = false;
-            bool toInScene = false;
-            for (auto* other : remaining) {
-                if (other == edgeItem->fromNode()) fromInScene = true;
-                if (other == edgeItem->toNode())   toInScene = true;
-            }
-            if (!fromInScene || !toInScene) {
-                orphanEdges.append(edgeItem);
-            }
-        }
+    // 数据模型同步：删除模型中的对应节点与边，杜绝幻影节点被执行/被编辑（A-06）
+    if (m_flowGraph) {
+        auto& nodes = m_flowGraph->nodes;
+        nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+            [&](const FlowNode& n) {
+                return std::find(delNodeIds.begin(), delNodeIds.end(), n.id) != delNodeIds.end();
+            }), nodes.end());
+        auto& edges = m_flowGraph->edges;
+        edges.erase(std::remove_if(edges.begin(), edges.end(),
+            [&](const FlowEdge& e) {
+                return std::find(delEdgeIds.begin(), delEdgeIds.end(), e.id) != delEdgeIds.end();
+            }), edges.end());
     }
-    for (auto* edge : orphanEdges) {
-        m_scene->removeItem(edge);
-        delete edge;
-    }
+
+    // 删除节点使参数面板的 m_currentNode 失效（矢量元素被移除）→ 通知清空
+    if (nodeDeleted) emit nodeDeselected();
 
     emit graphChanged();
 }

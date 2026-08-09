@@ -258,8 +258,10 @@ void AutomationEngine::run()
     d->stopRequested = false;
     d->currentStepIndex = 0;
 
-    const int totalSteps = static_cast<int>(d->currentTestCase.steps.size());
-    const auto& testCase = d->currentTestCase;
+    // 值拷贝当前用例，避免解锁后继续使用 d->currentTestCase 的引用（数据竞争，
+    // 其它线程 setCurrentTestCase 会改写它 → 竞态/未定义行为，A-16 潜在根因）。
+    TestCase testCase = d->currentTestCase;
+    const int totalSteps = static_cast<int>(testCase.steps.size());
     const bool stopOnFailure = testCase.stopOnFailure;
 
     locker.unlock();
