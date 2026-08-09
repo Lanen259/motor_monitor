@@ -70,3 +70,16 @@
 
 - 无红线文件改动需求；`cppcheck` 工具缺失为环境问题。
 - 建议核查 gate.bat / 各脚本 `set QT_QPA_PLATFORM` 尾随空格隐患（见 §4.4）。
+- **已修复的既有测试 UB**（集成代理知悉）：`tests/unit/automation/test_automation_engine.cpp` 的 `initTestCase` 用 `const char* dataDir = qgetenv("TEST_DATA_DIR")` 悬垂指针（qgetenv 返回临时 QByteArray），导致 fixture 路径依赖堆状态、不同 CWD/构建下时好时坏。本夜合入 master 时该测试在 master 门禁持续失败（3/3），定位为既有 UB 后已在 master 直接修复（commit `90e328d`），不影响自动化域功能。
+
+## 7. 合入 master 结果
+
+| 项 | 值 |
+|---|---|
+| 合并提交 | master `7926199` [波形] 合入波形域夜间防卡死自测成果（--no-ff） |
+| 门禁 | master 本地 gate.bat PASSED（17/17，76.46s）|
+| 静态检查 | clang-tidy 零新增告警（cppcheck 本机缺失） |
+| master push | `33b0b32..90e328d`（含 UB 修复 `90e328d`） |
+| master CI | 见 GitHub Actions（run `31327660581`） |
+| 合并锁 | 已删除（合并+push 完成后释放） |
+
