@@ -1,0 +1,71 @@
+name: CI Gate
+
+# 每次 push（任意分支）、PR、或手动触发时运行
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen   # 无显示环境下跑 QTest widgets 测试
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Qt 5.14.2 MinGW 7.3 32-bit 库 + qmake（aqt 安装，带缓存）
+      - name: Install Qt 5.14.2 (mingw73_32)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.14.2'
+          arch: 'win32_mingw73'
+          cache: true
+
+      # 与 Qt 5.14.2 mingw73_32 配套的 32 位 MinGW 7.3.0 编译器。
+      # 注意：这是全流程最易踩坑的一步（32 位老工具链）。
+      # 若 aqt 安装失败，最稳的替代方案是 self-hosted runner（用本机现成工具链）。
+      - name: Install MinGW 7.3.0 (32-bit)
+        shell: bash
+        run: |
+          python -m pip install --quiet --upgrade pip aqtinstall
+          aqt install-tool windows desktop tools_mingw -O "$RUNNER_TEMP/qt-tools"
+          echo "$RUNNER_TEMP/qt-tools/Tools/mingw730_32/bin" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          gcc --version | head -1
+          qmake -v
+          cmake --version | head -1
+
+      # 步骤1：qmake 全量构建（覆盖 mainwindow/main.cpp 及全部 src，编译+链接检查）
+      - name: Build app (qmake)
+        shell: bash
+        run: |
+          cd motor_antomation
+          qmake motor_antomation.pro
+          mingw32-make -j2
+
+      # 步骤2：CMake 构建单元 + 集成测试可执行文件
+      - name: Configure tests (CMake)
+        shell: bash
+        run: |
+          cmake -S motor_antomation -B build/ci-tests -G "MinGW Makefiles" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_PREFIX_PATH="$QTDIR" \
+            -DCMAKE_C_COMPILER="$RUNNER_TEMP/qt-tools/Tools/mingw730_32/bin/gcc.exe" \
+            -DCMAKE_CXX_COMPILER="$RUNNER_TEMP/qt-tools/Tools/mingw730_32/bin/g++.exe" \
+            -DCMAKE_MAKE_PROGRAM="$RUNNER_TEMP/qt-tools/Tools/mingw730_32/bin/mingw32-make.exe"
+
+      - name: Build tests (CMake)
+        shell: bash
+        run: cmake --build build/ci-tests -j2
+
+      # 步骤3：跑全部测试；任一失败则门禁变红
+      - name: Run tests (ctest)
+        shell: bash
+        run: ctest --test-dir build/ci-tests --output-on-failure
